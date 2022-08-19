@@ -29,7 +29,7 @@ public class JavaUtils {
         if (!interfacesMatcher.find()) {
             return Collections.emptySet();
         }
-        String[] implementedClasses = interfacesMatcher.group("implements").split("\s*,\s*");
+        String[] implementedClasses = interfacesMatcher.group("implements").split("\\s*,\\s*");
         Set<String> resolvedInterfaces = new HashSet<>();
         for (String implementedClass : implementedClasses) {
             resolvedInterfaces.add(resolveClass(implementedClass, imports, sourceSets));

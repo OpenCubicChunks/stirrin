@@ -23,7 +23,7 @@ public final class Pair<L, R> {
     public boolean equals(Object obj) {
         if (obj == this) return true;
         if (obj == null || obj.getClass() != this.getClass()) return false;
-        var that = (Pair) obj;
+        Pair that = (Pair) obj;
         return Objects.equals(this.l, that.l) &&
                 Objects.equals(this.r, that.r);
     }
