@@ -1,0 +1,44 @@
+plugins {
+    id 'java-gradle-plugin'
+    id 'com.gradle.plugin-publish' version '1.0.0'
+}
+
+group 'io.github.opencubicchunks'
+version '1.0.0'
+
+pluginBundle {
+    website = 'https://github.com/OpenCubicChunks/stirrin'
+    vcsUrl = 'https://github.com/OpenCubicChunks/stirrin'
+    tags = ['java']
+}
+
+gradlePlugin {
+    plugins {
+        javaHeadersPlugin {
+            displayName = "Stirrin"
+            description = "Compile time application of Mixin interfaces"
+            id = 'io.github.opencubicchunks.stirrin'
+            implementationClass = 'io.github.opencubicchunks.stirrin.Stirrin'
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.google.code.gson:gson:2.9.0'
+
+    implementation 'org.ow2.asm:asm:9.3'
+    implementation 'org.ow2.asm:asm-tree:9.3'
+    implementation 'org.ow2.asm:asm-util:9.3'
+    implementation 'org.ow2.asm:asm-commons:9.3'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+test {
+    useJUnitPlatform()
+}
