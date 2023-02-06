@@ -1,16 +1,5 @@
 package io.github.opencubicchunks.stirrin;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import org.gradle.api.InvalidUserDataException;
@@ -25,6 +14,13 @@ import org.gradle.api.tasks.SourceSetContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.stream.Collectors;
+
 public class Stirrin implements Plugin<Project> {
     public static final Logger LOGGER = LoggerFactory.getLogger(Stirrin.class.getName());
 
@@ -35,6 +31,7 @@ public class Stirrin implements Plugin<Project> {
         Attribute<Boolean> mixinInterfaces = Attribute.of("mixinInterfaces", Boolean.class);
 
         ConfigurationContainer configurations = project.getConfigurations();
+
         for (Configuration configuration : configurations) {
             if (configuration.isCanBeResolved()) {
                 configuration.getAttributes().attribute(mixinInterfaces, true);
@@ -64,11 +61,21 @@ public class Stirrin implements Plugin<Project> {
         mixinConfigsBySourceSet.forEach(((sourceSet, mixinConfigs) -> {
             for (File mixinConfig : mixinConfigs) {
                 try {
+                    System.out.println("Supplied mixin config path: " + mixinConfig);
                     String fileText = new String(Files.readAllBytes(mixinConfig.toPath()), StandardCharsets.UTF_8);
 
                     JsonObject jsonObject = gson.fromJson(fileText, JsonObject.class);
                     String packagePrefix = jsonObject.get("package").getAsString();
+                    @SuppressWarnings("unchecked")
                     List<String> mixins = gson.fromJson(jsonObject.get("mixins"), List.class);
+                    @SuppressWarnings("unchecked")
+                    List<String> clientMixins = gson.fromJson(jsonObject.get("client"), List.class);
+                    @SuppressWarnings("unchecked")
+                    List<String> serverMixins = gson.fromJson(jsonObject.get("server"), List.class);
+
+                    mixins.addAll(clientMixins);
+                    mixins.addAll(serverMixins);
+
                     mixins = mixins.stream().map(className -> packagePrefix + "." + className).collect(Collectors.toList());
                     mixinPairs.addAll(findMixinClasses(sourceSet, mixins));
                 } catch (IOException e) {
