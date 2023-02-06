@@ -1,30 +1,27 @@
 package io.github.opencubicchunks.stirrin;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
-public class JavaUtils {
+import java.io.File;
+import java.nio.file.Files;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class ResolutionUtils {
     private static final Pattern IMPORTS_PATTERN = Pattern.compile("import(?: static)?\\s+((?:\\s*\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+\\s*\\.)*"
             + "(?:\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+|\\*));");
     private static final Pattern INTERFACES_PATTERN = Pattern.compile("class\\s+\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+\\s+(?:extends\\s+\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+\\s+)"
             + "?implements\\s+(?<implements>(?:(?:\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+\\s*,\\s*)*)(?:\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+))\\s*\\{");;
     public static final Pattern MIXIN_TARGET_PATTERN = Pattern.compile("@\\s*Mixin\\s*\\((?:\\s*value\\s*=)?\\s*(\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}+\\s*\\.\\s*class)");
+
     /**
      * @param sourceSets Source sets to search for interfaces in the case of * imports
      * @param classText The class file source
      * @return a set of all interfaces implemented by a class. Returned interfaces have fully qualified names
      */
-    public static Set<String> getInterfaces(List<String> imports, SourceSetContainer sourceSets, String classText) {
+    public static Set<String> resolveInterfaces(List<String> imports, SourceSetContainer sourceSets, String classText) {
         Matcher interfacesMatcher = INTERFACES_PATTERN.matcher(classText);
         if (!interfacesMatcher.find()) {
             return Collections.emptySet();
@@ -37,7 +34,7 @@ public class JavaUtils {
         return resolvedInterfaces;
     }
 
-    public static List<String> getImports(String classText) {
+    public static List<String> resolveImports(String classText) {
         Matcher importsMatcher = IMPORTS_PATTERN.matcher(classText);
 
         List<String> imports = new ArrayList<>();

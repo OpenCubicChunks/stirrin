@@ -35,14 +35,14 @@ public class StirrinExtension {
         for (Pair<File, String> mixinPair : mixinClassFiles) {
             try {
                 String classSource = new String(Files.readAllBytes(mixinPair.l().toPath()), StandardCharsets.UTF_8);
-                List<String> imports = JavaUtils.getImports(classSource);
-                Set<String> interfaces = JavaUtils.getInterfaces(imports, sourceSets, classSource);
-                Matcher matcher = JavaUtils.MIXIN_TARGET_PATTERN.matcher(classSource);
+                List<String> imports = ResolutionUtils.resolveImports(classSource);
+                Set<String> interfaces = ResolutionUtils.resolveInterfaces(imports, sourceSets, classSource);
+                Matcher matcher = ResolutionUtils.MIXIN_TARGET_PATTERN.matcher(classSource);
 
                 if (matcher.find()) {
                     String targetName = matcher.group(1);
                     targetName = targetName.substring(0, targetName.length() - ".class".length());
-                    interfacesByMixinClass.computeIfAbsent(JavaUtils.resolveClass(targetName, imports, sourceSets), c -> new HashSet<>())
+                    interfacesByMixinClass.computeIfAbsent(ResolutionUtils.resolveClass(targetName, imports, sourceSets), c -> new HashSet<>())
                             .addAll(interfaces);
                 }
             } catch (IOException e) {
