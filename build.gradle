@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'io.github.opencubicchunks'
-version '1.0.1'
+version '1.0.14'
 
 pluginBundle {
     website = 'https://github.com/OpenCubicChunks/stirrin'
@@ -14,7 +14,7 @@ pluginBundle {
 
 gradlePlugin {
     plugins {
-        javaHeadersPlugin {
+        stirrinPlugin {
             displayName = "Stirrin"
             description = "Compile time application of Mixin interfaces"
             id = 'io.github.opencubicchunks.stirrin'
@@ -40,8 +40,9 @@ dependencies {
 }
 
 java {
+    withSourcesJar()
     toolchain {
-        languageVersion = JavaLanguageVersion.of(8)
+        languageVersion = JavaLanguageVersion.of(11)
     }
 }
 
