@@ -1,9 +1,5 @@
 package io.github.opencubicchunks.stirrin;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
-
 import org.gradle.api.artifacts.transform.InputArtifact;
 import org.gradle.api.artifacts.transform.TransformAction;
 import org.gradle.api.artifacts.transform.TransformOutputs;
@@ -14,6 +10,10 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
 
@@ -48,14 +48,15 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             String fileNameNoExt = fileName.substring(0, fileName.lastIndexOf("."));
             String outputFileName = fileNameNoExt + "-mixinInterfaces.jar";
 
-            StirrinTransformer.transformMinecraftJar(getParameters().getInterfacesByMixinClass(), getInputArtifact().get().getAsFile(),
+            Map<String, Set<String>> interfacesByMixinClass = getParameters().getInterfacesByMixinClass();
+            System.out.println("Mixin interfaces: " + interfacesByMixinClass);
+            StirrinTransformer.transformMinecraftJar(interfacesByMixinClass, getInputArtifact().get().getAsFile(),
                     outputs.file(outputFileName));
 
             LOGGER.warn(String.format("transformed %s", outputFileName));
-            return;
         } else {
             LOGGER.info(String.format("Rejected jar %s", fileName));
+            outputs.file(getInputArtifact());
         }
-        outputs.file(getInputArtifact());
     }
 }
