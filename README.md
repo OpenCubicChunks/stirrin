@@ -8,7 +8,7 @@ buildscript {
     repositories {
     }
     dependencies {
-        classpath 'io.github.opencubicchunks:stirrin:1.0.0'
+        classpath 'io.github.opencubicchunks:stirrin:1.1.2'
     }
 }
 

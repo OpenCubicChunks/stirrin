@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'io.github.opencubicchunks'
-version '1.0.14'
+version '1.1.2'
 
 pluginBundle {
     website = 'https://github.com/OpenCubicChunks/stirrin'
