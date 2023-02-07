@@ -2,6 +2,7 @@ package io.github.opencubicchunks.stirrin;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import io.github.opencubicchunks.stirrin.util.Pair;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;

@@ -1,4 +1,4 @@
-package io.github.opencubicchunks.stirrin;
+package io.github.opencubicchunks.stirrin.util;
 
 import java.util.Objects;
 

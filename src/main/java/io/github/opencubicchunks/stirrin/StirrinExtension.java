@@ -1,17 +1,14 @@
 package io.github.opencubicchunks.stirrin;
 
 import io.github.opencubicchunks.stirrin.StirrinTransform.Parameters;
+import io.github.opencubicchunks.stirrin.util.Pair;
 import org.gradle.api.Project;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.*;
-import java.util.regex.Matcher;
 
 public class StirrinExtension {
     private final Project project;
@@ -30,31 +27,23 @@ public class StirrinExtension {
         SourceSetContainer sourceSets = project.getExtensions().findByType(JavaPluginExtension.class).getSourceSets();
         List<Pair<File, String>> mixinClassFiles = Stirrin.findMixinClassFiles(mixinConfigFiles, sourceSets);
 
-        Map<String, Set<String>> interfacesByMixinClass = new HashMap<>();
-
-        for (Pair<File, String> mixinPair : mixinClassFiles) {
-            try {
-                String classSource = new String(Files.readAllBytes(mixinPair.l().toPath()), StandardCharsets.UTF_8);
-                List<String> imports = ResolutionUtils.resolveImports(classSource);
-                Set<String> interfaces = ResolutionUtils.resolveInterfaces(imports, sourceSets, classSource);
-                Matcher matcher = ResolutionUtils.MIXIN_TARGET_PATTERN.matcher(classSource);
-
-                if (matcher.find()) {
-                    String targetName = matcher.group(1);
-                    targetName = targetName.substring(0, targetName.length() - ".class".length());
-                    interfacesByMixinClass.computeIfAbsent(ResolutionUtils.resolveClass(targetName, imports, sourceSets), c -> new HashSet<>())
-                            .addAll(interfaces);
-                }
-            } catch (IOException e) {
-                throw new UncheckedIOException(String.format("Failed to parse class file %s", mixinPair.l()), e);
-            }
+        Set<File> sourceSetDirectories = new HashSet<>();
+        for (SourceSet sourceSet : sourceSets) {
+            sourceSetDirectories.addAll(sourceSet.getJava().getSrcDirs());
         }
 
         this.parameters.setConfigs(mixinConfigFiles);
-        this.parameters.setInterfacesByMixinClass(interfacesByMixinClass);
+        Map<File, String> files = new HashMap<>();
+        mixinClassFiles.forEach(pair -> files.put(pair.l(), pair.r()));
+        this.parameters.setMixinFiles(files);
+        this.parameters.setSourceSetDirectories(sourceSetDirectories);
     }
 
     public void setDebug(boolean value) {
         this.parameters.setDebug(value ? System.nanoTime() : 0);
+    }
+
+    public void setAdditionalSourceSets(Set<File> additionalSourceSets) {
+        this.parameters.setAdditionalSourceSets(additionalSourceSets);
     }
 }
