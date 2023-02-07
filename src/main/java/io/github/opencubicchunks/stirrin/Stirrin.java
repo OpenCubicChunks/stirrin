@@ -54,6 +54,11 @@ public class Stirrin implements Plugin<Project> {
         });
     }
 
+    /**
+     * @param mixinConfigFilenames mixin config files
+     * @param sourceSetContainer SourceSets to search for mixin classes in
+     * @return List of File-ClassName pairs
+     */
     public static List<Pair<File, String>> findMixinClassFiles(Set<String> mixinConfigFilenames, SourceSetContainer sourceSetContainer) {
         Map<SourceSet, List<File>> mixinConfigsBySourceSet = findMixinConfigsBySourceSet(mixinConfigFilenames, sourceSetContainer);
         List<Pair<File, String>> mixinPairs = new ArrayList<>();

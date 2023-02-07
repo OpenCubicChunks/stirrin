@@ -95,6 +95,13 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         }
     }
 
+    /**
+     *
+     * @param mixinInterfaceFiles A map from Mixin interface files to their fully qualified class name
+     * @param parser The ASTParser to use
+     * @param sourceSetDirectories The source sets to use for class resolution
+     * @return A map from interfaces to their methods
+     */
     private Map<String, List<MethodEntry>> getMixinInterfaceMethods(Map<File, String> mixinInterfaceFiles, ASTParser parser, Set<File> sourceSetDirectories) {
         Map<String, List<MethodEntry>> methodsByInterface = new HashMap<>();
 
@@ -114,8 +121,18 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                 for (Object type : cu.types()) {
                     if (type instanceof TypeDeclaration) {
                         TypeDeclaration typeDecl = (TypeDeclaration) type;
+                        if ((classPackage + "." + typeDecl.getName()).equals(mixinPair.getValue())) {
+                            String name = mixinPair.getValue();
+                            String[] split = name.split("\\.");
+                            if (!String.valueOf(typeDecl.getName()).equals(split[split.length-1])) {
+                                LOGGER.warn("Skipping unspecified class " + typeDecl.getName());
+                                continue;
+                            }
 
-                        getMethodEntries(typeDecl, methods, mixinPair, resolver);
+                            methods.addAll(getMethodEntries(typeDecl, resolver));
+                        } else { // TODO: add inner class handling. they are in the typeDecl
+                            LOGGER.warn("Skipping non-targeted out class " + classPackage + "." + typeDecl.getName());
+                        }
                     }
                 }
                 methodsByInterface.put(mixinPair.getValue(), methods);
@@ -127,14 +144,15 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         return methodsByInterface;
     }
 
-    private static void getMethodEntries(TypeDeclaration typeDecl, List<MethodEntry> methods, Map.Entry<File, String> mixinPair, Resolver resolver) {
-        String name = mixinPair.getValue();
-        String[] split = name.split("\\.");
-        if (!String.valueOf(typeDecl.getName()).equals(split[split.length-1])) {
-            LOGGER.warn("Skipping unspecified class " + typeDecl.getName());
-            return;
-        }
-
+    /**
+     * Finds all methods within a type, and creates a {@link MethodEntry} for each
+     *
+     * @param typeDecl The {@link TypeDeclaration} to search methods in
+     * @param resolver The resolver to use.
+     * @return The list of method entries for the supplied {@link TypeDeclaration}
+     */
+    private static List<MethodEntry> getMethodEntries(TypeDeclaration typeDecl, Resolver resolver) {
+        List<MethodEntry> methods = new ArrayList<>();
         for (MethodDeclaration method : typeDecl.getMethods()) {
             if (!methodIsInterfaceMethod(method))
                 continue;
@@ -153,7 +171,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             String returnType = getMethodReturnType(method, resolver, typeParameters);
             // TODO: remove null check
             if (returnType == null) {
-                LOGGER.warn("Failed to parse method return type for: " + methodName);
+                LOGGER.error("Failed to parse method return type for: " + methodName);
                 continue;
             }
 
@@ -161,6 +179,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
             methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters));
         }
+        return methods;
     }
 
     private static String getMethodReturnType(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
@@ -212,20 +231,26 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         return true;
     }
 
+    /**
+     * Attempts to use the resolver and type parameters to resolve a type name
+     * @param paramType The type to resolve
+     * @param resolver The resolver
+     * @param typeParameters Any type parameters
+     * @return The fully qualified class name
+     */
     private static String getFullyQualifiedTypeName(Type paramType, Resolver resolver, Set<String> typeParameters) {
-        String fullyQualifiedType = null;
         if (paramType.isSimpleType()) {
             SimpleType simpleType = (SimpleType) paramType;
-            fullyQualifiedType = resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+            return resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
         } else if (paramType.isPrimitiveType()) {
-            fullyQualifiedType = paramType.toString();
+            return paramType.toString();
         } else if (paramType.isParameterizedType()) {
             ParameterizedType type = (ParameterizedType) paramType;
-            fullyQualifiedType = getFullyQualifiedTypeName(type.getType(), resolver, typeParameters);
+            return getFullyQualifiedTypeName(type.getType(), resolver, typeParameters);
         } else {
             LOGGER.error("Unhandled parameter type");
+            return null;
         }
-        return fullyQualifiedType;
     }
 
     private static ASTParser createASTParser(Set<File> dependencyClasses, Set<File> projectClasses) {
