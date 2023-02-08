@@ -263,8 +263,8 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         projectClasses = projectClasses == null ? new HashSet<>() : projectClasses;
 
         parser.setEnvironment(
-                dependencyClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).collect(Collectors.toList()).toArray(new String[0]),
-                projectClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).collect(Collectors.toList()).toArray(new String[0]),
+                dependencyClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).toArray(String[]::new),
+                projectClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).toArray(String[]::new),
                 null, false);
         return parser;
     }

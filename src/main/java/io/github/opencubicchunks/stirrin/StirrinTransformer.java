@@ -1,17 +1,13 @@
 package io.github.opencubicchunks.stirrin;
 
-import org.objectweb.asm.*;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
-import java.io.*;
-import java.nio.file.Files;
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.*;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.jar.JarOutputStream;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
 
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
 import static io.github.opencubicchunks.stirrin.util.JarIO.loadClasses;

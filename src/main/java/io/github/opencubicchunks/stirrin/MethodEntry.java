@@ -17,7 +17,7 @@ public class MethodEntry {
     }
 
     public static class Parameter {
-        public String descriptor;
+        public final String descriptor;
 
         private Parameter(String descriptor) {
             this.descriptor = descriptor;

@@ -1,6 +1,5 @@
 package io.github.opencubicchunks.stirrin.util;
 
-import io.github.opencubicchunks.stirrin.StirrinTransformer;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
