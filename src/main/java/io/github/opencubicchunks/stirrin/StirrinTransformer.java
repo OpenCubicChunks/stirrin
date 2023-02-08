@@ -82,6 +82,9 @@ public class StirrinTransformer {
         String descriptor = signatureToInternalName(classNode.name);
         method.localVariables.add(new LocalVariableNode("this", descriptor, null, new LabelNode(), new LabelNode(), 0));
 
+        method.visibleAnnotations = new ArrayList<>();
+        method.visibleAnnotations.add(new AnnotationNode(ASM9, "Lio/github/opencubicchunks/stirrin/Stub;"));
+
         if (method.visibleTypeAnnotations == null) {
             method.visibleTypeAnnotations = new ArrayList<>();
         }
