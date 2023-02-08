@@ -77,14 +77,14 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                 mixinInterfaces.addAll(interfaces);
             });
 
-            Map<File, String> mixinInterfaceFiles = new HashMap<>();
+            Map<File, Set<String>> mixinInterfaceFiles = new HashMap<>();
             for (String mixinInterface : mixinInterfaces) {
                 File file = ResolutionUtils.fileFromNameAndSources(mixinInterface, sourceSetDirectories);
                 if (file == null) {
                     LOGGER.error("Failed to find file for mixin interface: " + mixinInterface + ". Ignoring.");
                     continue;
                 }
-                mixinInterfaceFiles.put(file, mixinInterface);
+                mixinInterfaceFiles.computeIfAbsent(file, f -> new HashSet<>()).add(mixinInterface);
             }
             Map<String, List<MethodEntry>> mixinInterfaceMethods = getMixinInterfaceMethods(mixinInterfaceFiles, astParser, sourceSetDirectories);
 
@@ -104,10 +104,10 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
      * @param sourceSetDirectories The source sets to use for class resolution
      * @return A map from interfaces to their methods
      */
-    private Map<String, List<MethodEntry>> getMixinInterfaceMethods(Map<File, String> mixinInterfaceFiles, ASTParser parser, Set<File> sourceSetDirectories) {
+    private Map<String, List<MethodEntry>> getMixinInterfaceMethods(Map<File, Set<String>> mixinInterfaceFiles, ASTParser parser, Set<File> sourceSetDirectories) {
         Map<String, List<MethodEntry>> methodsByInterface = new HashMap<>();
 
-        for (Map.Entry<File, String> mixinPair : mixinInterfaceFiles.entrySet()) {
+        for (Map.Entry<File, Set<String>> mixinPair : mixinInterfaceFiles.entrySet()) {
             try {
                 String classSource = Files.readString(mixinPair.getKey().toPath());
                 parser.setSource(classSource.toCharArray());
@@ -118,32 +118,36 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
                 Resolver resolver = new Resolver(classPackage, sourceSetDirectories, imports);
 
-                List<MethodEntry> methods = new ArrayList<>();
-                // TODO: make sure this properly handles inner classes
                 for (Object type : cu.types()) {
                     if (type instanceof TypeDeclaration) {
                         TypeDeclaration typeDecl = (TypeDeclaration) type;
-                        if ((classPackage + "." + typeDecl.getName()).equals(mixinPair.getValue())) {
-                            String name = mixinPair.getValue();
-                            String[] split = name.split("\\.");
-                            if (!String.valueOf(typeDecl.getName()).equals(split[split.length-1])) {
-                                LOGGER.warn("Skipping unspecified class " + typeDecl.getName());
-                                continue;
-                            }
-
-                            methods.addAll(getMethodEntries(typeDecl, resolver));
-                        } else { // TODO: add inner class handling. they are in the typeDecl
-                            LOGGER.warn("Skipping non-targeted out class " + classPackage + "." + typeDecl.getName());
-                        }
+                        addMethodEntriesForType(mixinPair.getValue(), classPackage + "." + typeDecl.getName(), resolver, methodsByInterface, typeDecl);
                     }
                 }
-                methodsByInterface.put(mixinPair.getValue(), methods);
             } catch (Throwable e) {
                 e.printStackTrace();
                 throw new GradleScriptException("", e);
             }
         }
         return methodsByInterface;
+    }
+
+    private static void addMethodEntriesForType(Set<String> mixinInterfaces, String fullyQualifiedClass, Resolver resolver, Map<String, List<MethodEntry>> methodsByInterface, TypeDeclaration typeDecl) {
+        if (mixinInterfaces.contains(fullyQualifiedClass)) {
+            methodsByInterface.computeIfAbsent(fullyQualifiedClass, n -> new ArrayList<>())
+                    .addAll(getMethodEntries(typeDecl, resolver));
+        } else {
+            LOGGER.warn("Skipping non-targeted class " + typeDecl.getName());
+        }
+
+        for (TypeDeclaration innerType : typeDecl.getTypes()) {
+            String innerClassName = fullyQualifiedClass + "$" + innerType.getName();
+            if (mixinInterfaces.contains(innerClassName)) {
+                addMethodEntriesForType(mixinInterfaces, innerClassName, resolver, methodsByInterface, innerType);
+            } else {
+                LOGGER.warn("Skipping non-targeted class " + fullyQualifiedClass + "$" + innerType.getName());
+            }
+        }
     }
 
     /**
@@ -220,6 +224,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
     // TODO: figure out how to do this more reliably. This doesn't take into account inner interfaces, or package private methods in an inner class.
     //       This is very bad.
+    //       Enums seem to be represented differently in the AST causing this issue
     private static boolean methodIsInterfaceMethod(MethodDeclaration method) {
         List<?> modifiers = method.modifiers();
         for (Object modifier : modifiers) {

@@ -4,9 +4,9 @@ import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,7 +41,8 @@ public class ResolutionUtils {
     public static String resolveClass(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets) {
         imports = new HashSet<>(imports);
 
-        int classDot = classToResolve.indexOf(".");
+        classToResolve = classToResolve.replace('.', '$');
+        int classDot = classToResolve.indexOf("$");
         String outerClass;
         String innerClass;
         if (classDot == -1) {
@@ -106,12 +107,32 @@ public class ResolutionUtils {
         return tryResolveFromSourceSet(importPkg, classToResolve, sourceSets);
     }
 
+    @Nullable
     public static File fileFromNameAndSources(String fullyQualifiedName, Collection<File> sourceSets) {
         String path = fullyQualifiedName.replace('.', File.separatorChar);
         for (File srcDir : sourceSets) {
-            Path resolvedPath = srcDir.toPath().resolve(path + ".java");
-            if (Files.exists(resolvedPath)) {
-                return resolvedPath.toFile();
+            File resolvedFile = srcDir.toPath().resolve(path + ".java").toFile();
+            if (resolvedFile.exists() && resolvedFile.isFile()) {
+                return resolvedFile;
+            }
+        }
+
+        // Maybe this was an inner class? Look for a file for the above class (if there is one)
+        return tryResolveOuterClassFile(fullyQualifiedName, sourceSets);
+    }
+
+    @Nullable
+    private static File tryResolveOuterClassFile(String fullyQualifiedName, Collection<File> sourceSets) {
+        int endIndex = fullyQualifiedName.indexOf('$');
+        if (endIndex < 0) {
+            return null;
+        }
+        String outerClassPath = fullyQualifiedName.substring(0, endIndex)
+                .replace('.', File.separatorChar);
+        for (File srcDir : sourceSets) {
+            File resolvedFile = srcDir.toPath().resolve(outerClassPath + ".java").toFile();
+            if (resolvedFile.exists() && resolvedFile.isFile()) {
+                return resolvedFile;
             }
         }
         return null;
