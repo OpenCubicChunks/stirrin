@@ -318,7 +318,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                             }
 
                             for (String mixinTarget : mixinTargets) {
-                                interfacesByTarget.put(mixinTarget, interfaces);
+                                interfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashSet<>()).addAll(interfaces);
                             }
                         }
                     }
