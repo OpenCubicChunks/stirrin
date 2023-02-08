@@ -55,7 +55,7 @@ public class StirrinTransformer {
                 // TODO: get type parameters working in output
                 for (String typeParameter : methodEntry.typeParameters) {
                     if (descriptor.equals("L" + typeParameter + ";")) {
-                        descriptor = "Ljava.lang.Object;";
+                        descriptor = "Ljava/lang/Object;";
                         break;
                     }
                 }
