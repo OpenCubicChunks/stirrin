@@ -1,12 +1,36 @@
 package io.github.opencubicchunks.stirrin.resolution;
 
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ClassInfo;
+import io.github.classgraph.ScanResult;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Set;
 
 public class ResolutionUtils {
+    private static final Set<String> JAVA_LANG_IMPORTS;
+
+    static {
+        HashSet<String> imports = new HashSet<>();
+        try (ScanResult scanResult = new ClassGraph()
+                .enableSystemJarsAndModules()
+                .enableClassInfo()
+                .acceptPackagesNonRecursive("java.lang")
+                .scan()) {
+            for (ClassInfo classInfo : scanResult.getAllClasses()) {
+                if (!classInfo.isPublic() || classInfo.getOuterClasses().size() > 0)
+                    continue;
+                imports.add(classInfo.getName());
+            }
+        }
+        JAVA_LANG_IMPORTS = Collections.unmodifiableSet(imports);
+    }
+
     public static String resolveClassWithTypeParameters(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets, Collection<String> typeParameters) {
         if (typeParameters.contains(classToResolve)) {
             return classToResolve;
@@ -16,9 +40,6 @@ public class ResolutionUtils {
 
     public static String resolveClass(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets) {
         imports = new HashSet<>(imports);
-        imports.add("java.lang.SuppressWarnings"); // java.lang.* is imported by default
-        imports.add("java.lang.AutoCloseable");
-        imports.add("java.lang.Iterator");
 
         int classDot = classToResolve.indexOf(".");
         String outerClass;
@@ -31,6 +52,27 @@ public class ResolutionUtils {
             innerClass = classToResolve.substring(classDot);
         }
 
+        String resolvedClass;
+        // Class file imports
+        resolvedClass = tryResolveFromImports(classToResolve, imports, sourceSets, outerClass, innerClass);
+        if (resolvedClass != null)
+            return resolvedClass;
+
+        // Default imports
+        resolvedClass = tryResolveFromImports(classToResolve, JAVA_LANG_IMPORTS, sourceSets, outerClass, innerClass);
+        if (resolvedClass != null)
+            return resolvedClass;
+
+        // Package imports
+        resolvedClass = tryResolveFromSourceSet(classPackage, classToResolve, sourceSets);
+        if (resolvedClass != null) {
+            return resolvedClass;
+        }
+
+        return null;
+    }
+
+    private static String tryResolveFromImports(String classToResolve, Collection<String> imports, Collection<File> sourceSets, String outerClass, String innerClass) {
         for (String anImport : imports) {
             if (anImport.endsWith("*")) {
                 // Star imports
@@ -46,13 +88,6 @@ public class ResolutionUtils {
                 return anImport + innerClass;
             }
         }
-
-        // Package imports
-        String s = tryResolveFromSourceSet(classPackage, classToResolve, sourceSets);
-        if (s != null) {
-            return s;
-        }
-
         return null;
     }
 

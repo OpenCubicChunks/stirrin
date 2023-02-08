@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'io.github.opencubicchunks'
-version '1.1.3'
+version '1.1.4'
 
 pluginBundle {
     website = 'https://github.com/OpenCubicChunks/stirrin'
@@ -29,6 +29,7 @@ repositories {
 
 dependencies {
     implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.30.0'
+    implementation 'io.github.classgraph:classgraph:4.8.154'
 
     implementation 'com.google.code.gson:gson:2.9.0'
 
