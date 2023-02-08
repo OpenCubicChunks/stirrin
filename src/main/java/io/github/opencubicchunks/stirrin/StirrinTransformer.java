@@ -74,6 +74,7 @@ public class StirrinTransformer {
             MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor);
 
             classNode.methods.add(method);
+            LOGGER.debug(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodDescriptor);
         }
     }
 
@@ -129,7 +130,7 @@ public class StirrinTransformer {
         }
 
         for (String interfaceAdded : interfacesToAdd) {
-            LOGGER.debug(String.format("Class %s: added interface %s\n", classNode.name, interfaceAdded));
+            LOGGER.debug(String.format("%s: Added interface %s", classNode.name, interfaceAdded));
         }
     }
 
