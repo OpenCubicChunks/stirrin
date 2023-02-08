@@ -79,8 +79,10 @@ public class Stirrin implements Plugin<Project> {
                     @SuppressWarnings("unchecked")
                     List<String> serverMixins = gson.fromJson(jsonObject.get("server"), List.class);
 
-                    mixins.addAll(clientMixins);
-                    mixins.addAll(serverMixins);
+                    if (clientMixins != null)
+                        mixins.addAll(clientMixins);
+                    if (serverMixins != null)
+                        mixins.addAll(serverMixins);
 
                     mixins = mixins.stream().map(className -> packagePrefix + "." + className).collect(Collectors.toList());
                     mixinPairs.addAll(findMixinClasses(sourceSet, mixins));

@@ -57,7 +57,9 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         Pattern acceptedJars = Pattern.compile(getParameters().getAcceptedJars());
 
         Set<File> sourceSetDirectories = getParameters().getSourceSetDirectories();
-        sourceSetDirectories.addAll(getParameters().getAdditionalSourceSets());
+        Set<File> additionalSourceSets = getParameters().getAdditionalSourceSets();
+        if (additionalSourceSets != null)
+            sourceSetDirectories.addAll(additionalSourceSets);
 
         if (acceptedJars.matcher(fileName).matches()) {
             LOGGER.warn(String.format("found %s", getInputArtifact().get().getAsFile()));
