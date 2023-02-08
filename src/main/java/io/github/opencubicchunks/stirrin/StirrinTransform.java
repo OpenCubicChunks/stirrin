@@ -249,8 +249,11 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         } else if (paramType.isParameterizedType()) {
             ParameterizedType type = (ParameterizedType) paramType;
             return getFullyQualifiedTypeName(type.getType(), resolver, typeParameters);
+        } else if (paramType.isArrayType()) {
+            ArrayType type = (ArrayType) paramType;
+            return String.join("", Collections.nCopies(type.getDimensions(), "[")) + getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters);
         } else {
-            LOGGER.error("Unhandled parameter type");
+            LOGGER.error("Unhandled parameter type " + paramType.getClass().getName());
             return null;
         }
     }

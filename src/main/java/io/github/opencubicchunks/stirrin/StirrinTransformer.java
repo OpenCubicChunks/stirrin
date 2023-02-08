@@ -66,7 +66,7 @@ public class StirrinTransformer {
 //            method.visibleTypeAnnotations.add(new TypeAnnotationNode(ASM9, TypeReference.METHOD_TYPE_PARAMETER, null, typeParameter));
 //        }
 
-            String methodDescriptor = Type.getMethodDescriptor(Type.getType(signatureToInternalName(methodEntry.returnType)), params.toArray(new Type[0]));
+            String methodDescriptor = Type.getMethodDescriptor(Type.getType(signatureToDescriptor(methodEntry.returnType)), params.toArray(new Type[0]));
             MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor);
 
             classNode.methods.add(method);
@@ -79,7 +79,7 @@ public class StirrinTransformer {
      */
     private static MethodNode createMethodStub(ClassNode classNode, MethodEntry methodEntry, String methodDescriptor) {
         MethodNode method = new MethodNode(ASM9, ACC_PUBLIC, methodEntry.name, methodDescriptor, null, null);
-        String descriptor = signatureToInternalName(classNode.name);
+        String descriptor = signatureToDescriptor(classNode.name);
         method.localVariables.add(new LocalVariableNode("this", descriptor, null, new LabelNode(), new LabelNode(), 0));
 
         method.visibleAnnotations = new ArrayList<>();
@@ -133,7 +133,8 @@ public class StirrinTransformer {
         }
     }
 
-    public static String signatureToInternalName(String sig) {
+    public static String signatureToDescriptor(String sig) {
+        // Trivial primitive types
         switch (sig) {
             case "void":
                 return "V";
@@ -154,7 +155,36 @@ public class StirrinTransformer {
             case "double":
                 return "D";
         }
-        sig = "L" + sig.replace('.', '/') + ";";
+
+        if (sig.contains("void") ||
+                sig.contains("boolean") ||
+                sig.contains("char") ||
+                sig.contains("byte") ||
+                sig.contains("short") ||
+                sig.contains("int") ||
+                sig.contains("float") ||
+                sig.contains("long") ||
+                sig.contains("double")
+        ) {
+
+        }
+
+        if (sig.contains("[")) {
+            // Array signatures
+            sig = sig.replace("void", "V");
+            sig = sig.replace("boolean", "Z");
+            sig = sig.replace("char", "C");
+            sig = sig.replace("byte", "B");
+            sig = sig.replace("short", "S");
+            sig = sig.replace("int", "I");
+            sig = sig.replace("float", "F");
+            sig = sig.replace("long", "J");
+            sig = sig.replace("double", "D");
+        } else {
+            // Classes or type parameters
+            sig = "L" + sig.replace('.', '/') + ";";
+        }
+
         return sig;
     }
 }

@@ -24,11 +24,11 @@ public class MethodEntry {
         }
 
         public static Parameter fromPrimitive(String primitive) {
-            return new Parameter(StirrinTransformer.signatureToInternalName(primitive));
+            return new Parameter(StirrinTransformer.signatureToDescriptor(primitive));
         }
 
         public static Parameter fromType(String fullyQualifiedName) {
-            return new Parameter(StirrinTransformer.signatureToInternalName(fullyQualifiedName));
+            return new Parameter(StirrinTransformer.signatureToDescriptor(fullyQualifiedName));
         }
     }
 }
