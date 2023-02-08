@@ -83,7 +83,7 @@ public class StirrinTransformer {
         method.localVariables.add(new LocalVariableNode("this", descriptor, null, new LabelNode(), new LabelNode(), 0));
 
         method.visibleAnnotations = new ArrayList<>();
-        method.visibleAnnotations.add(new AnnotationNode(ASM9, "Lio/github/opencubicchunks/stirrin/Stub;"));
+        method.visibleAnnotations.add(new AnnotationNode(ASM9, signatureToDescriptor(StirrinStub.class.getName())));
 
         if (method.visibleTypeAnnotations == null) {
             method.visibleTypeAnnotations = new ArrayList<>();
@@ -93,7 +93,7 @@ public class StirrinTransformer {
         method.instructions.add(new InsnNode(DUP));
         // TODO: include mixin class information?
         method.instructions.add(new LdcInsnNode("This stub should only exist in a dev environment. If this exception is thrown, Mixin failed to apply!"));
-        method.instructions.add(new MethodInsnNode(INVOKESPECIAL,  "java/lang/RuntimeException", "<init>", "(Ljava/lang/String;)V", false));
+        method.instructions.add(new MethodInsnNode(INVOKESPECIAL, RuntimeException.class.getName().replace('.', '/'), "<init>", "(Ljava/lang/String;)V", false));
         method.instructions.add(new InsnNode(ATHROW));
         method.maxStack = 3;
         method.maxLocals = 1;
