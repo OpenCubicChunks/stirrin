@@ -18,6 +18,7 @@ public class ResolutionUtils {
         imports = new HashSet<>(imports);
         imports.add("java.lang.SuppressWarnings"); // java.lang.* is imported by default
         imports.add("java.lang.AutoCloseable");
+        imports.add("java.lang.Iterator");
 
         int classDot = classToResolve.indexOf(".");
         String outerClass;
