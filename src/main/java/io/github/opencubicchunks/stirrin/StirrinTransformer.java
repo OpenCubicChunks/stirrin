@@ -91,8 +91,7 @@ public class StirrinTransformer {
 
         method.instructions.add(new TypeInsnNode(NEW, "java/lang/RuntimeException"));
         method.instructions.add(new InsnNode(DUP));
-        // TODO: include mixin class information?
-        method.instructions.add(new LdcInsnNode("This stub should only exist in a dev environment. If this exception is thrown, Mixin failed to apply!"));
+        method.instructions.add(new LdcInsnNode("This stub should only exist in a dev environment. If this exception is thrown stubs were not removed before mixin applied!"));
         method.instructions.add(new MethodInsnNode(INVOKESPECIAL, RuntimeException.class.getName().replace('.', '/'), "<init>", "(Ljava/lang/String;)V", false));
         method.instructions.add(new InsnNode(ATHROW));
         method.maxStack = 3;
