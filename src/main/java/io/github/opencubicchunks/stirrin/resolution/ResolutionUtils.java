@@ -1,34 +1,33 @@
 package io.github.opencubicchunks.stirrin.resolution;
 
-import io.github.classgraph.ClassGraph;
-import io.github.classgraph.ClassInfo;
-import io.github.classgraph.ScanResult;
-
 import javax.annotation.Nullable;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
 public class ResolutionUtils {
-    private static final Set<String> JAVA_LANG_IMPORTS;
+    private static final Set<String> JAVA_LANG_IMPORTS = new HashSet<>();
+    private static final Set<String> FAILED_JAVA_LANG_IMPORTS = new HashSet<>();
 
-    static {
-        HashSet<String> imports = new HashSet<>();
-        try (ScanResult scanResult = new ClassGraph()
-                .enableSystemJarsAndModules()
-                .enableClassInfo()
-                .acceptPackagesNonRecursive("java.lang")
-                .scan()) {
-            for (ClassInfo classInfo : scanResult.getAllClasses()) {
-                if (!classInfo.isPublic() || classInfo.getOuterClasses().size() > 0)
-                    continue;
-                imports.add(classInfo.getName());
-            }
+    private static void addLangImportIfRequired(String className) {
+        String javaLangClass = "java.lang." + className;
+        if (JAVA_LANG_IMPORTS.contains(javaLangClass) || FAILED_JAVA_LANG_IMPORTS.contains(javaLangClass)) {
+            return;
         }
-        JAVA_LANG_IMPORTS = Collections.unmodifiableSet(imports);
+
+        try (InputStream resource = ResolutionUtils.class.getResourceAsStream("/" + javaLangClass.replace('.', '/') + ".class")) {
+            if (resource != null) {
+                JAVA_LANG_IMPORTS.add(javaLangClass);
+            } else {
+                FAILED_JAVA_LANG_IMPORTS.add(javaLangClass);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static String resolveClassWithTypeParameters(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets, Collection<String> typeParameters) {
@@ -59,16 +58,17 @@ public class ResolutionUtils {
         if (resolvedClass != null)
             return resolvedClass;
 
-        // Default imports
-        resolvedClass = tryResolveFromImports(classToResolve, JAVA_LANG_IMPORTS, sourceSets, outerClass, innerClass);
-        if (resolvedClass != null)
-            return resolvedClass;
-
         // Package imports
         resolvedClass = tryResolveFromSourceSet(classPackage, classToResolve, sourceSets);
         if (resolvedClass != null) {
             return resolvedClass;
         }
+
+        // Default imports
+        addLangImportIfRequired(classToResolve);
+        resolvedClass = tryResolveFromImports(classToResolve, JAVA_LANG_IMPORTS, sourceSets, outerClass, innerClass);
+        if (resolvedClass != null)
+            return resolvedClass;
 
         return null;
     }
