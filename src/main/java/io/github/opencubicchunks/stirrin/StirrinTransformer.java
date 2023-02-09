@@ -95,7 +95,7 @@ public class StirrinTransformer {
         method.instructions.add(new MethodInsnNode(INVOKESPECIAL, RuntimeException.class.getName().replace('.', '/'), "<init>", "(Ljava/lang/String;)V", false));
         method.instructions.add(new InsnNode(ATHROW));
         method.maxStack = 3;
-        method.maxLocals = 1;
+        method.maxLocals = 2 + methodEntry.parameters.size(); // 1 for this, 1 for the error, one for each param
         return method;
     }
 
