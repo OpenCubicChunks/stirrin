@@ -258,7 +258,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         } else if (paramType.isArrayType()) {
             ArrayType type = (ArrayType) paramType;
             return new SpecifiedType(
-                    String.join("", Collections.nCopies(type.getDimensions(), "[")) + getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters),
+                    String.join("", Collections.nCopies(type.getDimensions(), "[")) + getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters).descriptor,
                     SpecifiedType.TYPE.ARRAY
             );
         } else {
