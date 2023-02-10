@@ -1,5 +1,7 @@
 package io.github.opencubicchunks.stirrin.resolution;
 
+import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
+
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
@@ -30,14 +32,14 @@ public class ResolutionUtils {
         }
     }
 
-    public static String resolveClassWithTypeParameters(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets, Collection<String> typeParameters) {
+    public static SpecifiedType resolveClassWithTypeParameters(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets, Collection<String> typeParameters) {
         if (typeParameters.contains(classToResolve)) {
-            return classToResolve;
+            return new SpecifiedType(classToResolve, SpecifiedType.TYPE.GENERIC);
         }
         return resolveClass(classPackage, classToResolve, imports, sourceSets);
     }
 
-    public static String resolveClass(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets) {
+    public static SpecifiedType resolveClass(String classPackage, String classToResolve, Collection<String> imports, Collection<File> sourceSets) {
         imports = new HashSet<>(imports);
 
         classToResolve = classToResolve.replace('.', '$');
@@ -56,19 +58,19 @@ public class ResolutionUtils {
         // Class file imports
         resolvedClass = tryResolveFromImports(classToResolve, imports, sourceSets, outerClass, innerClass);
         if (resolvedClass != null)
-            return resolvedClass;
+            return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
 
         // Package imports
         resolvedClass = tryResolveFromSourceSet(classPackage, classToResolve, sourceSets);
         if (resolvedClass != null) {
-            return resolvedClass;
+            return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
         }
 
         // Default imports
         addLangImportIfRequired(classToResolve);
         resolvedClass = tryResolveFromImports(classToResolve, JAVA_LANG_IMPORTS, sourceSets, outerClass, innerClass);
         if (resolvedClass != null)
-            return resolvedClass;
+            return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
 
         return null;
     }
@@ -108,8 +110,9 @@ public class ResolutionUtils {
     }
 
     @Nullable
-    public static File fileFromNameAndSources(String fullyQualifiedName, Collection<File> sourceSets) {
-        String path = fullyQualifiedName.replace('.', File.separatorChar);
+    public static File fileFromNameAndSources(String descriptor, Collection<File> sourceSets) {
+        String signature = descriptor.substring(1, descriptor.length() - 1);
+        String path = signature.replace('/', File.separatorChar);
         for (File srcDir : sourceSets) {
             File resolvedFile = srcDir.toPath().resolve(path + ".java").toFile();
             if (resolvedFile.exists() && resolvedFile.isFile()) {
@@ -118,7 +121,7 @@ public class ResolutionUtils {
         }
 
         // Maybe this was an inner class? Look for a file for the above class (if there is one)
-        return tryResolveOuterClassFile(fullyQualifiedName, sourceSets);
+        return tryResolveOuterClassFile(signature, sourceSets);
     }
 
     @Nullable

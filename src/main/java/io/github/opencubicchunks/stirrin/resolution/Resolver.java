@@ -1,5 +1,7 @@
 package io.github.opencubicchunks.stirrin.resolution;
 
+import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
+
 import java.io.File;
 import java.util.Set;
 
@@ -14,11 +16,11 @@ public class Resolver {
         this.imports = imports;
     }
 
-    public String resolveClass(String classToResolve) {
+    public SpecifiedType resolveClass(String classToResolve) {
         return ResolutionUtils.resolveClass(this.classPackage, classToResolve, this.imports, this.sourceSetDirectories);
     }
 
-    public String resolveClassWithTypeParameters(String classToResolve, Set<String> typeParameters) {
+    public SpecifiedType resolveClassWithTypeParameters(String classToResolve, Set<String> typeParameters) {
         return ResolutionUtils.resolveClassWithTypeParameters(this.classPackage, classToResolve, this.imports, this.sourceSetDirectories, typeParameters);
     }
 }
