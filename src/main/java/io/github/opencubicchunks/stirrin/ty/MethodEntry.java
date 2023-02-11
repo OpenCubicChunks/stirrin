@@ -12,12 +12,14 @@ public class MethodEntry {
     public final SpecifiedType returnType;
     public final Set<String> typeParameters;
     @Nullable public final String methodSignature;
+    public final List<String> exceptions;
 
-    public MethodEntry(String name, List<Pair<String, SpecifiedType>> nameParameterPairs, SpecifiedType returnType, Set<String> typeParameters, @Nullable String methodSignature) {
+    public MethodEntry(String name, List<Pair<String, SpecifiedType>> nameParameterPairs, SpecifiedType returnType, Set<String> typeParameters, @Nullable String methodSignature, List<String> exceptions) {
         this.name = name;
         this.parameters = nameParameterPairs;
         this.returnType = returnType;
         this.typeParameters = typeParameters;
         this.methodSignature = methodSignature;
+        this.exceptions = exceptions;
     }
 }

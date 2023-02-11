@@ -192,7 +192,17 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
             String methodSignature = createMethodSignature(method, resolver, typeParameters);
 
-            methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters, methodSignature));
+            List<String> methodExceptions = new ArrayList<>();
+            for (Object thrownExceptionType : method.thrownExceptionTypes()) {
+                Type exceptionType = (Type) thrownExceptionType;
+                SpecifiedType type = getFullyQualifiedTypeName(exceptionType, resolver, typeParameters);
+                if (type == null) {
+                    type = new SpecifiedType(Exception.class.getName(), SpecifiedType.TYPE.CLASS);
+                }
+                methodExceptions.add(type.fullyQualifiedName);
+            }
+
+            methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters, methodSignature, methodExceptions));
         }
         return methods;
     }

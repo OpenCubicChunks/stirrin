@@ -105,6 +105,9 @@ public class StirrinTransformer {
             method.parameters.add(new ParameterNode(parameter.l(), 0));
         }
 
+        method.exceptions = new ArrayList<>();
+        method.exceptions.addAll(methodEntry.exceptions);
+
         return method;
     }
 
