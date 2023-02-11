@@ -2,6 +2,7 @@ package io.github.opencubicchunks.stirrin;
 
 import io.github.opencubicchunks.stirrin.resolution.ResolutionUtils;
 import io.github.opencubicchunks.stirrin.resolution.Resolver;
+import io.github.opencubicchunks.stirrin.resolution.Resolver.TypeParameteredResolver;
 import io.github.opencubicchunks.stirrin.ty.MethodEntry;
 import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
 import io.github.opencubicchunks.stirrin.util.Pair;
@@ -180,22 +181,23 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                     typeParameters.add(String.valueOf(typeParam.getName()));
                 }
             }
+            TypeParameteredResolver parameteredResolver = resolver.withTypeParameters(typeParameters);
 
-            SpecifiedType returnType = getMethodReturnType(method, resolver, typeParameters);
+            SpecifiedType returnType = getMethodReturnType(method, parameteredResolver);
             // TODO: remove null check
             if (returnType == null) {
                 LOGGER.error("Failed to parse method return type for: " + methodName);
                 continue;
             }
 
-            List<Pair<String, SpecifiedType>> parameters = getMethodParameters(method, resolver, typeParameters);
+            List<Pair<String, SpecifiedType>> parameters = getMethodParameters(method, parameteredResolver);
 
-            String methodSignature = createMethodSignature(method, resolver, typeParameters);
+            String methodSignature = createMethodSignature(method, parameteredResolver);
 
             List<String> methodExceptions = new ArrayList<>();
             for (Object thrownExceptionType : method.thrownExceptionTypes()) {
                 Type exceptionType = (Type) thrownExceptionType;
-                SpecifiedType type = getFullyQualifiedTypeName(exceptionType, resolver, typeParameters);
+                SpecifiedType type = getFullyQualifiedTypeName(exceptionType, parameteredResolver);
                 if (type == null) {
                     type = new SpecifiedType(Exception.class.getName(), SpecifiedType.TYPE.CLASS);
                 }
@@ -207,22 +209,22 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         return methods;
     }
 
-    private static SpecifiedType getMethodReturnType(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
+    private static SpecifiedType getMethodReturnType(MethodDeclaration method, TypeParameteredResolver resolver) {
         Type returnTy = method.getReturnType2();
         if (returnTy == null) {
             return null;
         }
-        return getFullyQualifiedTypeName(returnTy, resolver, typeParameters);
+        return getFullyQualifiedTypeName(returnTy, resolver);
     }
 
-    private static List<Pair<String, SpecifiedType>> getMethodParameters(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
+    private static List<Pair<String, SpecifiedType>> getMethodParameters(MethodDeclaration method, TypeParameteredResolver resolver) {
         List<Pair<String, SpecifiedType>> parameters = new ArrayList<>();
 
         for (Object parameter : method.parameters()) {
             if (parameter instanceof SingleVariableDeclaration) {
                 SingleVariableDeclaration param = (SingleVariableDeclaration) parameter;
                 Type paramType = param.getType();
-                SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(paramType, resolver, typeParameters);
+                SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(paramType, resolver);
                 // TODO: remove null check
                 if (fullyQualifiedType == null) {
                     fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
@@ -257,21 +259,20 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
      * Attempts to use the resolver and type parameters to resolve a type name
      * @param paramType The type to resolve
      * @param resolver The resolver
-     * @param typeParameters Any type parameters
      * @return The fully qualified class name
      */
-    private static SpecifiedType getFullyQualifiedTypeName(Type paramType, Resolver resolver, Set<String> typeParameters) {
+    private static SpecifiedType getFullyQualifiedTypeName(Type paramType, TypeParameteredResolver resolver) {
         if (paramType.isSimpleType()) {
             SimpleType simpleType = (SimpleType) paramType;
-            return resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+            return resolver.resolveClass(String.valueOf(simpleType.getName()));
         } else if (paramType.isPrimitiveType()) {
             return new SpecifiedType(paramType.toString(), SpecifiedType.TYPE.PRIMITIVE);
         } else if (paramType.isParameterizedType()) {
             ParameterizedType type = (ParameterizedType) paramType;
-            return getFullyQualifiedTypeName(type.getType(), resolver, typeParameters);
+            return getFullyQualifiedTypeName(type.getType(), resolver);
         } else if (paramType.isArrayType()) {
             ArrayType type = (ArrayType) paramType;
-            SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters);
+            SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(type.getElementType(), resolver);
             // TODO: remove null check
             if (fullyQualifiedType == null) {
                 fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
@@ -293,10 +294,9 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
      *
      * @param method The method to create a signature for
      * @param resolver The resolver
-     * @param typeParameters The type parameters to be used in the resolver
      * @return A method signature for the specified method
      */
-    private static String createMethodSignature(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
+    private static String createMethodSignature(MethodDeclaration method, TypeParameteredResolver resolver) {
         SignatureWriter signature = new SignatureWriter();
         for (Object typeParameter : method.typeParameters()) {
             TypeParameter param = (TypeParameter) typeParameter;
@@ -310,7 +310,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                     if (i != 0) { // visitFormalTypeParameter adds the first ':', but all subsequent bounds also need a ':' proceeding
                         signature.visitInterfaceBound();
                     }
-                    addSignatureOf(signature, bound, resolver, typeParameters);
+                    addSignatureOf(signature, bound, resolver);
                 }
             } else { // bound it to object
                 signature.visitClassType("java/lang/Object");
@@ -323,7 +323,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             Type paramType = param.getType();
 
             signature.visitParameterType();
-            addSignatureOf(signature, paramType, resolver, typeParameters);
+            addSignatureOf(signature, paramType, resolver);
         }
 
         Type returnTy = method.getReturnType2();
@@ -331,10 +331,9 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             return null;
         }
         signature.visitReturnType();
-        addSignatureOf(signature, returnTy, resolver, typeParameters);
+        addSignatureOf(signature, returnTy, resolver);
 
-        String s = signature.toString();
-        return s;
+        return signature.toString();
     }
 
     /**
@@ -343,12 +342,11 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
      * @param signature The signature to write to
      * @param paramType The type to find and add the signature of
      * @param resolver The resolver
-     * @param typeParameters The type parameters to be used in the resolver
      */
-    private static void addSignatureOf(SignatureWriter signature, Type paramType, Resolver resolver, Set<String> typeParameters) {
+    private static void addSignatureOf(SignatureWriter signature, Type paramType, TypeParameteredResolver resolver) {
         if (paramType.isSimpleType()) {
             SimpleType simpleType = (SimpleType) paramType;
-            SpecifiedType specifiedType = resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+            SpecifiedType specifiedType = resolver.resolveClass(String.valueOf(simpleType.getName()));
             if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
                 specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
             }
@@ -367,7 +365,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                 // We don't recurse here passing baseType as that would add a ';' before the type parameters
                 // incorrect "T;<V>;"  correct "T<V>;"
                 SimpleType simpleType = (SimpleType) baseType;
-                SpecifiedType specifiedType = resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+                SpecifiedType specifiedType = resolver.resolveClass(String.valueOf(simpleType.getName()));
                 if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
                     specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
                 }
@@ -379,7 +377,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             for (Object typeArgument : type.typeArguments()) {
                 signature.visitTypeArgument('='); // '=' here denotes a non-wildcard type argument, which we add on the lines below
                 Type typeArg = (Type) typeArgument;
-                addSignatureOf(signature, typeArg, resolver, typeParameters);
+                addSignatureOf(signature, typeArg, resolver);
             }
             signature.visitEnd();
         } else if (paramType.isWildcardType()) {
@@ -388,7 +386,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             ArrayType type = (ArrayType) paramType;
             for (int i = 0; i < type.getDimensions(); i++)
                 signature.visitArrayType();
-            addSignatureOf(signature, type.getElementType(), resolver, typeParameters);
+            addSignatureOf(signature, type.getElementType(), resolver);
         } else {
             throw new RuntimeException("Unhandled parameter type " + paramType.getClass().getName());
         }
@@ -454,7 +452,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                             for (Object anInterface : interfaceTypes) {
                                 if (anInterface instanceof SimpleType) {
                                     SimpleType itf = (SimpleType) anInterface;
-                                    interfaces.add(ResolutionUtils.resolveClass(classPackage, String.valueOf(itf.getName()), imports, sourceSetDirectories).descriptor);
+                                    interfaces.add(resolver.resolveClass(String.valueOf(itf.getName())).descriptor);
                                 }
                             }
 

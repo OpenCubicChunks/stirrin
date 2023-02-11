@@ -23,4 +23,20 @@ public class Resolver {
     public SpecifiedType resolveClassWithTypeParameters(String classToResolve, Set<String> typeParameters) {
         return ResolutionUtils.resolveClassWithTypeParameters(this.classPackage, classToResolve, this.imports, this.sourceSetDirectories, typeParameters);
     }
+
+    public TypeParameteredResolver withTypeParameters(Set<String> typeParameters) {
+        return new TypeParameteredResolver(typeParameters);
+    }
+
+    public class TypeParameteredResolver {
+        private final Set<String> typeParameters;
+
+        private TypeParameteredResolver(Set<String> typeParameters) {
+            this.typeParameters = typeParameters;
+        }
+
+        public SpecifiedType resolveClass(String classToResolve) {
+            return Resolver.this.resolveClassWithTypeParameters(classToResolve, this.typeParameters);
+        }
+    }
 }
