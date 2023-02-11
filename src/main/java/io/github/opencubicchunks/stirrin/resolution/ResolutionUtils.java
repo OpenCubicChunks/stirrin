@@ -11,6 +11,8 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
+import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
+
 public class ResolutionUtils {
     private static final Set<String> JAVA_LANG_IMPORTS = new HashSet<>();
     private static final Set<String> FAILED_JAVA_LANG_IMPORTS = new HashSet<>();
@@ -72,6 +74,7 @@ public class ResolutionUtils {
         if (resolvedClass != null)
             return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
 
+        LOGGER.error("Failed to parse type: " + classPackage + "." + classToResolve);
         return null;
     }
 
