@@ -16,6 +16,7 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
+import org.objectweb.asm.signature.SignatureWriter;
 
 import java.io.File;
 import java.nio.file.Files;
@@ -188,7 +189,9 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
             List<SpecifiedType> parameters = getMethodParameters(method, resolver, typeParameters);
 
-            methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters));
+            String methodSignature = createMethodSignature(method, resolver, typeParameters);
+
+            methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters, methodSignature));
         }
         return methods;
     }
@@ -211,13 +214,13 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                 SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(paramType, resolver, typeParameters);
                 // TODO: remove null check
                 if (fullyQualifiedType == null) {
-                    LOGGER.warn("Failed to parse method parameter type for: " + paramType);
-                    continue;
+                    fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
+                    LOGGER.error("Failed to parse method parameter type for: " + paramType + " replacing it with Object");
                 }
 
                 parameters.add(fullyQualifiedType);
             } else {
-                throw new GradleScriptException("Unhandled method parameter class", null);
+                throw new RuntimeException("Unhandled method parameter class");
             }
         }
         return parameters;
@@ -264,6 +267,113 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         } else {
             LOGGER.error("Unhandled parameter type " + paramType.getClass().getName());
             return null;
+        }
+    }
+
+    /**
+     * Creates a method signature. This differs from a method descriptor in that it contains generic type information
+     * instead of the types being erased.
+     *
+     * @param method The method to create a signature for
+     * @param resolver The resolver
+     * @param typeParameters The type parameters to be used in the resolver
+     * @return A method signature for the specified method
+     */
+    private static String createMethodSignature(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
+        SignatureWriter signature = new SignatureWriter();
+        for (Object typeParameter : method.typeParameters()) {
+            TypeParameter param = (TypeParameter) typeParameter;
+            signature.visitFormalTypeParameter(String.valueOf(param.getName()));
+            List<?> typeBounds = param.typeBounds();
+            if (typeBounds.size() > 0) { // it has bounds, use them
+                for (int i = 0, typeBoundsSize = typeBounds.size(); i < typeBoundsSize; i++) {
+                    Object typeBound = typeBounds.get(i);
+                    Type bound = (Type) typeBound;
+
+                    if (i != 0) { // visitFormalTypeParameter adds the first ':', but all subsequent bounds also need a ':' proceeding
+                        signature.visitInterfaceBound();
+                    }
+                    addSignatureOf(signature, bound, resolver, typeParameters);
+                }
+            } else { // bound it to object
+                signature.visitClassType("java/lang/Object");
+                signature.visitEnd();
+            }
+        }
+
+        for (Object parameter : method.parameters()) {
+            SingleVariableDeclaration param = (SingleVariableDeclaration) parameter;
+            Type paramType = param.getType();
+
+            signature.visitParameterType();
+            addSignatureOf(signature, paramType, resolver, typeParameters);
+        }
+
+        Type returnTy = method.getReturnType2();
+        if (returnTy == null) {
+            return null;
+        }
+        signature.visitReturnType();
+        addSignatureOf(signature, returnTy, resolver, typeParameters);
+
+        String s = signature.toString();
+        return s;
+    }
+
+    /**
+     * Adds the signature of the specified type to the supplied {@link SignatureWriter}
+     *
+     * @param signature The signature to write to
+     * @param paramType The type to find and add the signature of
+     * @param resolver The resolver
+     * @param typeParameters The type parameters to be used in the resolver
+     */
+    private static void addSignatureOf(SignatureWriter signature, Type paramType, Resolver resolver, Set<String> typeParameters) {
+        if (paramType.isSimpleType()) {
+            SimpleType simpleType = (SimpleType) paramType;
+            SpecifiedType specifiedType = resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+            if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
+                specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
+            }
+            if (specifiedType.type == SpecifiedType.TYPE.GENERIC) {
+                signature.visitTypeVariable(specifiedType.fullyQualifiedName);
+            } else { // type must be a class
+                signature.visitClassType(specifiedType.fullyQualifiedName.replace('.', '/'));
+                signature.visitEnd();
+            }
+        } else if (paramType.isPrimitiveType()) {
+            signature.visitBaseType(DescriptorUtils.primitiveToDescriptor(paramType.toString()));
+        } else if (paramType.isParameterizedType()) {
+            ParameterizedType type = (ParameterizedType) paramType;
+            Type baseType = type.getType();
+            if (baseType.isSimpleType()) {
+                // We don't recurse here passing baseType as that would add a ';' before the type parameters
+                // incorrect "T;<V>;"  correct "T<V>;"
+                SimpleType simpleType = (SimpleType) baseType;
+                SpecifiedType specifiedType = resolver.resolveClassWithTypeParameters(String.valueOf(simpleType.getName()), typeParameters);
+                if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
+                    specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
+                }
+                signature.visitClassType(specifiedType.fullyQualifiedName.replace('.', '/'));
+            } else {
+                throw new RuntimeException("ParameterizedType contained non-SimpleType");
+            }
+
+            for (Object typeArgument : type.typeArguments()) {
+                signature.visitTypeArgument('='); // '=' here denotes a non-wildcard type argument, which we add on the lines below
+                Type typeArg = (Type) typeArgument;
+                addSignatureOf(signature, typeArg, resolver, typeParameters);
+            }
+            signature.visitEnd();
+        } else if (paramType.isWildcardType()) {
+            signature.visitTypeArgument();
+        } else if (paramType.isArrayType()) {
+            ArrayType type = (ArrayType) paramType;
+            for (int i = 0; i < type.getDimensions(); i++)
+                signature.visitArrayType();
+            addSignatureOf(signature, type.getElementType(), resolver, typeParameters);
+        } else {
+            throw new RuntimeException("Unhandled parameter type " + paramType.getClass().getName());
         }
     }
 

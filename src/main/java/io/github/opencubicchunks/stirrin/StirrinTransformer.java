@@ -5,6 +5,7 @@ import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -41,7 +42,7 @@ public class StirrinTransformer {
     }
 
     /**
-     * For each method entry supplied, a stub method is added to the class. See {@link StirrinTransformer#createMethodStub(ClassNode, MethodEntry, String)}
+     * For each method entry supplied, a stub method is added to the class. See {@link StirrinTransformer#createMethodStub(ClassNode, MethodEntry, String, String)}
      *
      * @param classNode The {@link ClassNode} to modify
      * @param methodEntries List of method entries to add to the {@link ClassNode}
@@ -53,7 +54,6 @@ public class StirrinTransformer {
             // Remove generics from parameters, replaced with Object
             for (SpecifiedType parameter : methodEntry.parameters) {
                 String descriptor = parameter.descriptor;
-                // TODO: get type parameters working in output
                 for (String typeParameter : methodEntry.typeParameters) {
                     if (descriptor.equals(typeParameter)) {
                         descriptor = "Ljava/lang/Object;";
@@ -73,7 +73,7 @@ public class StirrinTransformer {
             }
 
             String methodDescriptor = Type.getMethodDescriptor(Type.getType(returnTypeDescriptor), params.toArray(new Type[0]));
-            MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor);
+            MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor, methodEntry.methodSignature);
 
             classNode.methods.add(method);
             LOGGER.debug(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodDescriptor);
@@ -83,15 +83,13 @@ public class StirrinTransformer {
     /**
      * Creates a method stub which throws a {@link RuntimeException} with some information.
      */
-    private static MethodNode createMethodStub(ClassNode classNode, MethodEntry methodEntry, String methodDescriptor) {
-        MethodNode method = new MethodNode(ASM9, ACC_PUBLIC, methodEntry.name, methodDescriptor, null, null);
+    private static MethodNode createMethodStub(ClassNode classNode, MethodEntry methodEntry, String methodDescriptor, @Nullable String methodSignature) {
+        MethodNode method = new MethodNode(ASM9, ACC_PUBLIC, methodEntry.name, methodDescriptor, methodSignature, null);
         String descriptor = classToDescriptor(classNode.name);
         method.localVariables.add(new LocalVariableNode("this", descriptor, null, new LabelNode(), new LabelNode(), 0));
 
         method.visibleAnnotations = new ArrayList<>();
         method.visibleAnnotations.add(new AnnotationNode(ASM9, classToDescriptor(StirrinStub.class.getName())));
-
-        // TODO: get type parameters working in output
 
         method.instructions.add(new TypeInsnNode(NEW, "java/lang/RuntimeException"));
         method.instructions.add(new InsnNode(DUP));

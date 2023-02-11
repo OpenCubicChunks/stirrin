@@ -11,31 +11,36 @@ public class DescriptorUtils {
         return "L" + sig.replace('.', '/') + ";";
     }
 
+    public static char primitiveToDescriptor(String sig) {
+        switch (sig) {
+            case "void":
+                return 'V';
+            case "boolean":
+                return 'Z';
+            case "char":
+                return 'C';
+            case "byte":
+                return 'B';
+            case "short":
+                return 'S';
+            case "int":
+                return 'I';
+            case "float":
+                return 'F';
+            case "long":
+                return 'J';
+            case "double":
+                return 'D';
+            default:
+                throw new IllegalArgumentException("Invalid primitive signature: " + sig);
+        }
+    }
+
     public static String signatureToDescriptor(String sig, SpecifiedType.TYPE type) {
         // Trivial primitive types
         switch (type) {
             case PRIMITIVE:
-                switch (sig) {
-                    case "void":
-                        return "V";
-                    case "boolean":
-                        return "Z";
-                    case "char":
-                        return "C";
-                    case "byte":
-                        return "B";
-                    case "short":
-                        return "S";
-                    case "int":
-                        return "I";
-                    case "float":
-                        return "F";
-                    case "long":
-                        return "J";
-                    case "double":
-                        return "D";
-                }
-                break;
+                return String.valueOf(primitiveToDescriptor(sig));
             case ARRAY:
                 sig = sig.replace("void", "V");
                 sig = sig.replace("boolean", "Z");
