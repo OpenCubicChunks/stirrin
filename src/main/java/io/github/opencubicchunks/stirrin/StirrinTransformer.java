@@ -50,6 +50,7 @@ public class StirrinTransformer {
         for (MethodEntry methodEntry : methodEntries) {
             //TODO: add thrown exceptions to signature
             List<Type> params = new ArrayList<>();
+            // Remove generics from parameters, replaced with Object
             for (SpecifiedType parameter : methodEntry.parameters) {
                 String descriptor = parameter.descriptor;
                 // TODO: get type parameters working in output
@@ -61,7 +62,17 @@ public class StirrinTransformer {
                 }
                 params.add(Type.getType(descriptor));
             }
-            String methodDescriptor = Type.getMethodDescriptor(Type.getType(methodEntry.returnType.descriptor), params.toArray(new Type[0]));
+
+            // Remove generics from return type, replaced with Object
+            String returnTypeDescriptor = methodEntry.returnType.descriptor;
+            for (String typeParameter : methodEntry.typeParameters) {
+                if (returnTypeDescriptor.equals(typeParameter)) {
+                    returnTypeDescriptor = "Ljava/lang/Object;";
+                    break;
+                }
+            }
+
+            String methodDescriptor = Type.getMethodDescriptor(Type.getType(returnTypeDescriptor), params.toArray(new Type[0]));
             MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor);
 
             classNode.methods.add(method);
