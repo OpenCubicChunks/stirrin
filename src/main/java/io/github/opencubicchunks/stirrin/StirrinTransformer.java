@@ -91,7 +91,7 @@ public class StirrinTransformer {
         method.visibleAnnotations = new ArrayList<>();
         method.visibleAnnotations.add(new AnnotationNode(ASM9, classToDescriptor(StirrinStub.class.getName())));
 
-        method.instructions.add(new TypeInsnNode(NEW, "java/lang/RuntimeException"));
+        method.instructions.add(new TypeInsnNode(NEW, RuntimeException.class.getName().replace('.', '/')));
         method.instructions.add(new InsnNode(DUP));
         method.instructions.add(new LdcInsnNode("This stub should only exist in a dev environment. If this exception is thrown stubs were not removed before mixin applied!"));
         method.instructions.add(new MethodInsnNode(INVOKESPECIAL, RuntimeException.class.getName().replace('.', '/'), "<init>", "(Ljava/lang/String;)V", false));
