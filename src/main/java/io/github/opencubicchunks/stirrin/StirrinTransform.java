@@ -4,6 +4,7 @@ import io.github.opencubicchunks.stirrin.resolution.ResolutionUtils;
 import io.github.opencubicchunks.stirrin.resolution.Resolver;
 import io.github.opencubicchunks.stirrin.ty.MethodEntry;
 import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
+import io.github.opencubicchunks.stirrin.util.Pair;
 import org.eclipse.jdt.core.dom.*;
 import org.gradle.api.GradleScriptException;
 import org.gradle.api.artifacts.transform.InputArtifact;
@@ -187,7 +188,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                 continue;
             }
 
-            List<SpecifiedType> parameters = getMethodParameters(method, resolver, typeParameters);
+            List<Pair<String, SpecifiedType>> parameters = getMethodParameters(method, resolver, typeParameters);
 
             String methodSignature = createMethodSignature(method, resolver, typeParameters);
 
@@ -204,8 +205,8 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         return getFullyQualifiedTypeName(returnTy, resolver, typeParameters);
     }
 
-    private static List<SpecifiedType> getMethodParameters(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
-        List<SpecifiedType> parameters = new ArrayList<>();
+    private static List<Pair<String, SpecifiedType>> getMethodParameters(MethodDeclaration method, Resolver resolver, Set<String> typeParameters) {
+        List<Pair<String, SpecifiedType>> parameters = new ArrayList<>();
 
         for (Object parameter : method.parameters()) {
             if (parameter instanceof SingleVariableDeclaration) {
@@ -218,7 +219,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                     LOGGER.error("Failed to parse method parameter type for: " + paramType + " replacing it with Object");
                 }
 
-                parameters.add(fullyQualifiedType);
+                parameters.add(new Pair<>(param.getName().getIdentifier(), fullyQualifiedType));
             } else {
                 throw new RuntimeException("Unhandled method parameter class");
             }

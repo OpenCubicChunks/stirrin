@@ -2,6 +2,7 @@ package io.github.opencubicchunks.stirrin;
 
 import io.github.opencubicchunks.stirrin.ty.MethodEntry;
 import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
+import io.github.opencubicchunks.stirrin.util.Pair;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
@@ -52,8 +53,8 @@ public class StirrinTransformer {
             //TODO: add thrown exceptions to signature
             List<Type> params = new ArrayList<>();
             // Remove generics from parameters, replaced with Object
-            for (SpecifiedType parameter : methodEntry.parameters) {
-                String descriptor = parameter.descriptor;
+            for (Pair<String, SpecifiedType> parameter : methodEntry.parameters) {
+                String descriptor = parameter.r().descriptor;
                 for (String typeParameter : methodEntry.typeParameters) {
                     if (descriptor.equals(typeParameter)) {
                         descriptor = "Ljava/lang/Object;";
@@ -98,6 +99,12 @@ public class StirrinTransformer {
         method.instructions.add(new InsnNode(ATHROW));
         method.maxStack = 3;
         method.maxLocals = 2 + methodEntry.parameters.size(); // 1 for this, 1 for the error, one for each param
+
+        method.parameters = new ArrayList<>();
+        for (Pair<String, SpecifiedType> parameter : methodEntry.parameters) {
+            method.parameters.add(new ParameterNode(parameter.l(), 0));
+        }
+
         return method;
     }
 
