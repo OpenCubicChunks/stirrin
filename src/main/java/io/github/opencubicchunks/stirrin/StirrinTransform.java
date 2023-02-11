@@ -260,8 +260,14 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             return getFullyQualifiedTypeName(type.getType(), resolver, typeParameters);
         } else if (paramType.isArrayType()) {
             ArrayType type = (ArrayType) paramType;
+            SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters);
+            // TODO: remove null check
+            if (fullyQualifiedType == null) {
+                fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
+                LOGGER.error("Failed to parse array element type for: " + paramType + " replacing it with Object");
+            }
             return new SpecifiedType(
-                    String.join("", Collections.nCopies(type.getDimensions(), "[")) + getFullyQualifiedTypeName(type.getElementType(), resolver, typeParameters).descriptor,
+                    String.join("", Collections.nCopies(type.getDimensions(), "[")) + fullyQualifiedType.descriptor,
                     SpecifiedType.TYPE.ARRAY
             );
         } else {
