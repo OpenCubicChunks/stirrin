@@ -63,9 +63,9 @@ public class ResolutionUtils {
             return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
 
         // Package imports
-        resolvedClass = tryResolveFromSourceSet(classPackage, classToResolve, sourceSets);
+        resolvedClass = tryResolveFromSourceSet(classPackage, outerClass, sourceSets); // attempt to resolve the class file
         if (resolvedClass != null) {
-            return new SpecifiedType(resolvedClass, SpecifiedType.TYPE.CLASS);
+            return new SpecifiedType(resolvedClass + innerClass, SpecifiedType.TYPE.CLASS);
         }
 
         // Default imports
