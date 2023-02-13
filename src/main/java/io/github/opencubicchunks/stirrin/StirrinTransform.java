@@ -1,34 +1,22 @@
 package io.github.opencubicchunks.stirrin;
 
-import io.github.opencubicchunks.stirrin.resolution.ResolutionUtils;
-import io.github.opencubicchunks.stirrin.resolution.Resolver;
-import io.github.opencubicchunks.stirrin.resolution.Resolver.TypeParameteredResolver;
 import io.github.opencubicchunks.stirrin.ty.MethodEntry;
-import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
-import io.github.opencubicchunks.stirrin.util.Pair;
 import org.eclipse.jdt.core.dom.*;
-import org.gradle.api.GradleScriptException;
-import org.gradle.api.artifacts.transform.InputArtifact;
-import org.gradle.api.artifacts.transform.TransformAction;
-import org.gradle.api.artifacts.transform.TransformOutputs;
-import org.gradle.api.artifacts.transform.TransformParameters;
+import org.gradle.api.artifacts.transform.*;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileSystemLocation;
 import org.gradle.api.provider.Provider;
-import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.InputFile;
-import org.gradle.api.tasks.PathSensitive;
-import org.gradle.api.tasks.PathSensitivity;
-import org.objectweb.asm.signature.SignatureWriter;
+import org.gradle.api.tasks.*;
+import org.objectweb.asm.Type;
 
 import java.io.File;
-import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
-import static io.github.opencubicchunks.stirrin.DescriptorUtils.classToDescriptor;
-import static io.github.opencubicchunks.stirrin.DescriptorUtils.innerClassOf;
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
-import static org.eclipse.jdt.core.dom.AST.JLS18;
+import static io.github.opencubicchunks.stirrin.util.MethodBindingUtils.*;
 
 public abstract class StirrinTransform implements TransformAction<StirrinTransform.Parameters> {
     interface Parameters extends TransformParameters {
@@ -41,13 +29,9 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         @Input long getDebug();
         void setDebug(long l);
 
-        @InputFile
+        @InputDirectory
         Set<File> getSourceSetDirectories();
         void setSourceSetDirectories(Set<File> sourceSetDirectories);
-
-        @InputFile @org.gradle.api.tasks.Optional
-        Set<File> getAdditionalSourceSets();
-        void setAdditionalSourceSets(Set<File> sourceSetDirectories);
 
         @Input
         Map<File, String> getMixinFiles();
@@ -58,45 +42,34 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
     @InputArtifact
     public abstract Provider<FileSystemLocation> getInputArtifact();
 
+    @InputArtifactDependencies
+    public abstract FileCollection getTransitiveDeps();
+
     @Override
     public void transform(TransformOutputs outputs) {
-        String fileName = getInputArtifact().get().getAsFile().getName();
-
+        File minecraftJar = getInputArtifact().get().getAsFile();
+        String fileName = minecraftJar.getName();
         Pattern acceptedJars = Pattern.compile(getParameters().getAcceptedJars());
 
-        Set<File> sourceSetDirectories = getParameters().getSourceSetDirectories();
-        Set<File> additionalSourceSets = getParameters().getAdditionalSourceSets();
-        if (additionalSourceSets != null)
-            sourceSetDirectories.addAll(additionalSourceSets);
-
         if (acceptedJars.matcher(fileName).matches()) {
-            LOGGER.warn(String.format("found %s", getInputArtifact().get().getAsFile()));
+            LOGGER.warn(String.format("found asd %s", minecraftJar));
+
+
+            Set<Path> sourceSets = getParameters().getSourceSetDirectories().stream().map(File::toPath).collect(Collectors.toSet());
 
             String fileNameNoExt = fileName.substring(0, fileName.lastIndexOf("."));
-            String outputFileName = fileNameNoExt + "-mixinInterfaces.jar";
+            String outputFileName = fileNameNoExt + "-stirred.jar";
 
-            ASTParser astParser = createASTParser(new HashSet<>(), new HashSet<>());
+            Set<Path> transitiveDeps = getTransitiveDeps().getFiles().stream().map(File::toPath).collect(Collectors.toSet());
+            transitiveDeps.add(minecraftJar.toPath());
 
-            Map<String, Set<String>> mixinInterfacesByTarget = getMixinInterfacesByTarget(getParameters().getMixinFiles(), astParser, sourceSetDirectories);
-            LOGGER.debug("Mixin interfaces: " + mixinInterfacesByTarget);
+            Parser parser = new Parser(transitiveDeps, sourceSets);
 
-            Set<String> mixinInterfaces = new HashSet<>();
-            mixinInterfacesByTarget.forEach((target, interfaces) -> {
-                mixinInterfaces.addAll(interfaces);
-            });
+            Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget = getMixinInterfacesByTarget(parser,
+                getParameters().getMixinFiles().keySet().stream().map(File::toPath).collect(Collectors.toSet())
+            );
 
-            Map<File, Set<String>> mixinInterfaceFiles = new HashMap<>();
-            for (String mixinInterfaceDescriptor : mixinInterfaces) {
-                File file = ResolutionUtils.fileFromNameAndSources(mixinInterfaceDescriptor, sourceSetDirectories);
-                if (file == null) {
-                    LOGGER.error("Failed to find file for mixin interface: " + mixinInterfaceDescriptor + ". Ignoring.");
-                    continue;
-                }
-                mixinInterfaceFiles.computeIfAbsent(file, f -> new HashSet<>()).add(mixinInterfaceDescriptor);
-            }
-            Map<String, List<MethodEntry>> mixinInterfaceMethods = getMixinInterfaceMethods(mixinInterfaceFiles, astParser, sourceSetDirectories);
-
-            StirrinTransformer.transformMinecraftJar(mixinInterfacesByTarget, mixinInterfaceMethods, getInputArtifact().get().getAsFile(), outputs.file(outputFileName));
+            StirrinTransformer.transformMinecraftJar(mixinInterfacesByTarget, minecraftJar, outputs.file(outputFileName));
 
             LOGGER.warn(String.format("transformed %s", outputFileName));
         } else {
@@ -105,399 +78,93 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         }
     }
 
-    /**
-     *
-     * @param mixinInterfaceFiles A map from Mixin interface files to their fully qualified class name
-     * @param parser The ASTParser to use
-     * @param sourceSetDirectories The source sets to use for class resolution
-     * @return A map from interfaces to their methods
-     */
-    private Map<String, List<MethodEntry>> getMixinInterfaceMethods(Map<File, Set<String>> mixinInterfaceFiles, ASTParser parser, Set<File> sourceSetDirectories) {
-        Map<String, List<MethodEntry>> methodsByInterface = new HashMap<>();
+    private static Map<String, Map<Type, Collection<MethodEntry>>> getMixinInterfacesByTarget(Parser parser, Collection<Path> mixinSourceFiles) {
+        Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget = new HashMap<>();
 
-        for (Map.Entry<File, Set<String>> mixinPair : mixinInterfaceFiles.entrySet()) {
-            try {
-                String classSource = Files.readString(mixinPair.getKey().toPath());
-                parser.setSource(classSource.toCharArray());
-
-                CompilationUnit cu = (CompilationUnit) parser.createAST(null);
-                String classPackage = String.valueOf(cu.getPackage().getName());
-                Set<String> imports = getImportsFrom(cu);
-
-                Resolver resolver = new Resolver(classPackage, sourceSetDirectories, imports);
-
+        FileASTRequestor requestor = new FileASTRequestor() {
+            @Override public void acceptAST(String sourceFilePath, CompilationUnit cu) {
                 for (Object type : cu.types()) {
-                    if (type instanceof TypeDeclaration) {
-                        TypeDeclaration typeDecl = (TypeDeclaration) type;
-                        addMethodEntriesForType(mixinPair.getValue(), classToDescriptor(classPackage + "." + typeDecl.getName()), resolver, methodsByInterface, typeDecl);
+                    AbstractTypeDeclaration abstractTypeDecl = (AbstractTypeDeclaration) type;
+
+                    if ((abstractTypeDecl.getModifiers() & Modifier.PUBLIC) != 0) { // has public modifier, it must be the main type in the file
+                        if (abstractTypeDecl instanceof TypeDeclaration) {
+                            TypeDeclaration typeDecl = (TypeDeclaration) abstractTypeDecl;
+
+                            Set<String> mixinTargets = getMixinTargetsForType(typeDecl);
+                            if (!mixinTargets.isEmpty()) { // this type is a mixin and has targets
+                                Map<Type, Collection<MethodEntry>> interfaceMethodsFromType = getInterfaceMethodsFromType(typeDecl);
+
+                                for (String mixinTarget : mixinTargets) {
+                                    Map<Type, Collection<MethodEntry>> methodsByInterface = mixinInterfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashMap<>());
+
+                                    interfaceMethodsFromType.forEach((t, methods) ->
+                                        methodsByInterface.computeIfAbsent(t, tt -> new HashSet<>()).addAll(methods));
+                                }
+                            }
+                        }
                     }
                 }
-            } catch (Throwable e) {
-                e.printStackTrace();
-                throw new GradleScriptException("", e);
+            }
+        };
+
+        for (Path mixinSourceFile : mixinSourceFiles) {
+            parser.getParser().createASTs(new String[] { mixinSourceFile.toAbsolutePath().toString() }, null, new String[0], requestor, null);
+        }
+
+        return mixinInterfacesByTarget;
+    }
+
+    private static Map<Type, Collection<MethodEntry>> getInterfaceMethodsFromType(TypeDeclaration typeDecl) {
+        Map<Type, Collection<MethodEntry>> methodsByInterface = new HashMap<>();
+        List<?> interfaceTypes = typeDecl.superInterfaceTypes();
+        for (Object anInterface : interfaceTypes) {
+            if (anInterface instanceof SimpleType) { // TODO: handle parameterized interfaces
+                ITypeBinding itf = ((SimpleType) anInterface).resolveBinding();
+
+                Type itfType = Type.getType("L" + itf.getBinaryName().replace('.', '/') + ";");
+
+                for (IMethodBinding method : itf.getDeclaredMethods()) {
+                    String methodDescriptor = createMethodDescriptor(method);
+                    String methodSignature = createMethodSignature(method);
+
+                    List<String> paramNames = getParamNames(method);
+
+                    methodsByInterface.computeIfAbsent(itfType, t -> new ArrayList<>()).add(
+                        new MethodEntry(method.getName(), methodDescriptor, methodSignature, paramNames, new ArrayList<>())
+                    );
+                }
             }
         }
         return methodsByInterface;
     }
 
-    private static void addMethodEntriesForType(Set<String> mixinInterfaces, String classDescriptor, Resolver resolver, Map<String, List<MethodEntry>> methodsByInterface, TypeDeclaration typeDecl) {
-        if (mixinInterfaces.contains(classDescriptor)) {
-            methodsByInterface.computeIfAbsent(classDescriptor, n -> new ArrayList<>())
-                    .addAll(getMethodEntries(typeDecl, resolver));
-        } else {
-            LOGGER.warn("Skipping non-targeted class " + typeDecl.getName());
-        }
-
-        for (TypeDeclaration innerType : typeDecl.getTypes()) {
-            String innerClassDescriptor = innerClassOf(classDescriptor, String.valueOf(innerType.getName()));
-            if (mixinInterfaces.contains(innerClassDescriptor)) {
-                addMethodEntriesForType(mixinInterfaces, innerClassDescriptor, resolver, methodsByInterface, innerType);
-            } else {
-                LOGGER.warn("Skipping non-targeted class " + innerClassDescriptor);
-            }
-        }
-    }
-
-    /**
-     * Finds all methods within a type, and creates a {@link MethodEntry} for each
-     *
-     * @param typeDecl The {@link TypeDeclaration} to search methods in
-     * @param resolver The resolver to use.
-     * @return The list of method entries for the supplied {@link TypeDeclaration}
-     */
-    private static List<MethodEntry> getMethodEntries(TypeDeclaration typeDecl, Resolver resolver) {
-        List<MethodEntry> methods = new ArrayList<>();
-        for (MethodDeclaration method : typeDecl.getMethods()) {
-            if (!methodIsInterfaceMethod(method))
-                continue;
-
-            String methodName = String.valueOf(method.getName());
-
-            Set<String> typeParameters = new HashSet<>();
-            List<?> list = method.typeParameters();
-            for (Object typeParameter : list) {
-                if (typeParameter instanceof TypeParameter) {
-                    TypeParameter typeParam = (TypeParameter) typeParameter;
-                    typeParameters.add(String.valueOf(typeParam.getName()));
-                }
-            }
-            TypeParameteredResolver parameteredResolver = resolver.withTypeParameters(typeParameters);
-
-            SpecifiedType returnType = getMethodReturnType(method, parameteredResolver);
-            // TODO: remove null check
-            if (returnType == null) {
-                LOGGER.error("Failed to parse method return type for: " + methodName);
-                continue;
-            }
-
-            List<Pair<String, SpecifiedType>> parameters = getMethodParameters(method, parameteredResolver);
-
-            String methodSignature = createMethodSignature(method, parameteredResolver);
-
-            List<String> methodExceptions = new ArrayList<>();
-            for (Object thrownExceptionType : method.thrownExceptionTypes()) {
-                Type exceptionType = (Type) thrownExceptionType;
-                SpecifiedType type = getFullyQualifiedTypeName(exceptionType, parameteredResolver);
-                if (type == null) {
-                    type = new SpecifiedType(Exception.class.getName(), SpecifiedType.TYPE.CLASS);
-                }
-                methodExceptions.add(type.fullyQualifiedName);
-            }
-
-            methods.add(new MethodEntry(methodName, parameters, returnType, typeParameters, methodSignature, methodExceptions));
-        }
-        return methods;
-    }
-
-    private static SpecifiedType getMethodReturnType(MethodDeclaration method, TypeParameteredResolver resolver) {
-        Type returnTy = method.getReturnType2();
-        if (returnTy == null) {
-            return null;
-        }
-        return getFullyQualifiedTypeName(returnTy, resolver);
-    }
-
-    private static List<Pair<String, SpecifiedType>> getMethodParameters(MethodDeclaration method, TypeParameteredResolver resolver) {
-        List<Pair<String, SpecifiedType>> parameters = new ArrayList<>();
-
-        for (Object parameter : method.parameters()) {
-            if (parameter instanceof SingleVariableDeclaration) {
-                SingleVariableDeclaration param = (SingleVariableDeclaration) parameter;
-                Type paramType = param.getType();
-                SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(paramType, resolver);
-                // TODO: remove null check
-                if (fullyQualifiedType == null) {
-                    fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
-                    LOGGER.error("Failed to parse method parameter type for: " + paramType + " replacing it with Object");
-                }
-
-                parameters.add(new Pair<>(param.getName().getIdentifier(), fullyQualifiedType));
-            } else {
-                throw new RuntimeException("Unhandled method parameter class");
-            }
-        }
-        return parameters;
-    }
-
-    // TODO: figure out how to do this more reliably. This doesn't take into account inner interfaces, or package private methods in an inner class.
-    //       This is very bad.
-    //       Enums seem to be represented differently in the AST causing this issue
-    private static boolean methodIsInterfaceMethod(MethodDeclaration method) {
-        List<?> modifiers = method.modifiers();
-        for (Object modifier : modifiers) {
-            if (modifier instanceof Modifier) {
-                Modifier mod = (Modifier) modifier;
-                if (mod.isPublic() || mod.isProtected() || mod.isPrivate() || mod.isAbstract() || mod.isNative()) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Attempts to use the resolver and type parameters to resolve a type name
-     * @param paramType The type to resolve
-     * @param resolver The resolver
-     * @return The fully qualified class name
-     */
-    private static SpecifiedType getFullyQualifiedTypeName(Type paramType, TypeParameteredResolver resolver) {
-        if (paramType.isSimpleType()) {
-            SimpleType simpleType = (SimpleType) paramType;
-            return resolver.resolveClass(String.valueOf(simpleType.getName()));
-        } else if (paramType.isPrimitiveType()) {
-            return new SpecifiedType(paramType.toString(), SpecifiedType.TYPE.PRIMITIVE);
-        } else if (paramType.isParameterizedType()) {
-            ParameterizedType type = (ParameterizedType) paramType;
-            return getFullyQualifiedTypeName(type.getType(), resolver);
-        } else if (paramType.isArrayType()) {
-            ArrayType type = (ArrayType) paramType;
-            SpecifiedType fullyQualifiedType = getFullyQualifiedTypeName(type.getElementType(), resolver);
-            // TODO: remove null check
-            if (fullyQualifiedType == null) {
-                fullyQualifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
-                LOGGER.error("Failed to parse array element type for: " + paramType + " replacing it with Object");
-            }
-            return new SpecifiedType(
-                    String.join("", Collections.nCopies(type.getDimensions(), "[")) + fullyQualifiedType.descriptor,
-                    SpecifiedType.TYPE.ARRAY
-            );
-        } else {
-            LOGGER.error("Unhandled parameter type " + paramType.getClass().getName());
-            return null;
-        }
-    }
-
-    /**
-     * Creates a method signature. This differs from a method descriptor in that it contains generic type information
-     * instead of the types being erased.
-     *
-     * @param method The method to create a signature for
-     * @param resolver The resolver
-     * @return A method signature for the specified method
-     */
-    private static String createMethodSignature(MethodDeclaration method, TypeParameteredResolver resolver) {
-        SignatureWriter signature = new SignatureWriter();
-        for (Object typeParameter : method.typeParameters()) {
-            TypeParameter param = (TypeParameter) typeParameter;
-            signature.visitFormalTypeParameter(String.valueOf(param.getName()));
-            List<?> typeBounds = param.typeBounds();
-            if (typeBounds.size() > 0) { // it has bounds, use them
-                for (int i = 0, typeBoundsSize = typeBounds.size(); i < typeBoundsSize; i++) {
-                    Object typeBound = typeBounds.get(i);
-                    Type bound = (Type) typeBound;
-
-                    if (i != 0) { // visitFormalTypeParameter adds the first ':', but all subsequent bounds also need a ':' proceeding
-                        signature.visitInterfaceBound();
-                    }
-                    addSignatureOf(signature, bound, resolver);
-                }
-            } else { // bound it to object
-                signature.visitClassType("java/lang/Object");
-                signature.visitEnd();
-            }
-        }
-
-        for (Object parameter : method.parameters()) {
-            SingleVariableDeclaration param = (SingleVariableDeclaration) parameter;
-            Type paramType = param.getType();
-
-            signature.visitParameterType();
-            addSignatureOf(signature, paramType, resolver);
-        }
-
-        Type returnTy = method.getReturnType2();
-        if (returnTy == null) {
-            return null;
-        }
-        signature.visitReturnType();
-        addSignatureOf(signature, returnTy, resolver);
-
-        return signature.toString();
-    }
-
-    /**
-     * Adds the signature of the specified type to the supplied {@link SignatureWriter}
-     *
-     * @param signature The signature to write to
-     * @param paramType The type to find and add the signature of
-     * @param resolver The resolver
-     */
-    private static void addSignatureOf(SignatureWriter signature, Type paramType, TypeParameteredResolver resolver) {
-        if (paramType.isSimpleType()) {
-            SimpleType simpleType = (SimpleType) paramType;
-            SpecifiedType specifiedType = resolver.resolveClass(String.valueOf(simpleType.getName()));
-            if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
-                specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
-            }
-            if (specifiedType.type == SpecifiedType.TYPE.GENERIC) {
-                signature.visitTypeVariable(specifiedType.fullyQualifiedName);
-            } else { // type must be a class
-                signature.visitClassType(specifiedType.fullyQualifiedName.replace('.', '/'));
-                signature.visitEnd();
-            }
-        } else if (paramType.isPrimitiveType()) {
-            signature.visitBaseType(DescriptorUtils.primitiveToDescriptor(paramType.toString()));
-        } else if (paramType.isParameterizedType()) {
-            ParameterizedType type = (ParameterizedType) paramType;
-            Type baseType = type.getType();
-            if (baseType.isSimpleType()) {
-                // We don't recurse here passing baseType as that would add a ';' before the type parameters
-                // incorrect "T;<V>;"  correct "T<V>;"
-                SimpleType simpleType = (SimpleType) baseType;
-                SpecifiedType specifiedType = resolver.resolveClass(String.valueOf(simpleType.getName()));
-                if (specifiedType == null) { // failed to resolve the type, we just use Object as a placeholder
-                    specifiedType = new SpecifiedType("java.lang.Object", SpecifiedType.TYPE.CLASS);
-                }
-                signature.visitClassType(specifiedType.fullyQualifiedName.replace('.', '/'));
-            } else {
-                throw new RuntimeException("ParameterizedType contained non-SimpleType");
-            }
-
-            for (Object typeArgument : type.typeArguments()) {
-                signature.visitTypeArgument('='); // '=' here denotes a non-wildcard type argument, which we add on the lines below
-                Type typeArg = (Type) typeArgument;
-                addSignatureOf(signature, typeArg, resolver);
-            }
-            signature.visitEnd();
-        } else if (paramType.isWildcardType()) {
-            signature.visitTypeArgument();
-        } else if (paramType.isArrayType()) {
-            ArrayType type = (ArrayType) paramType;
-            for (int i = 0; i < type.getDimensions(); i++)
-                signature.visitArrayType();
-            addSignatureOf(signature, type.getElementType(), resolver);
-        } else {
-            throw new RuntimeException("Unhandled parameter type " + paramType.getClass().getName());
-        }
-    }
-
-    private static ASTParser createASTParser(Set<File> dependencyClasses, Set<File> projectClasses) {
-        ASTParser parser = ASTParser.newParser(JLS18);
-        parser.setKind(ASTParser.K_COMPILATION_UNIT);
-        parser.setResolveBindings(true);
-        parser.setBindingsRecovery(true);
-
-        dependencyClasses = dependencyClasses == null ? new HashSet<>() : dependencyClasses;
-        projectClasses = projectClasses == null ? new HashSet<>() : projectClasses;
-
-        parser.setEnvironment(
-                dependencyClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).toArray(String[]::new),
-                projectClasses.stream().map(file -> file.toPath().toAbsolutePath().toString()).toArray(String[]::new),
-                null, false);
-        return parser;
-    }
-
-    private static Map<String, Set<String>> getMixinInterfacesByTarget(Map<File, String> mixinClassFiles, ASTParser parser, Set<File> sourceSetDirectories) {
-        Map<String, Set<String>> interfacesByTarget = new HashMap<>();
-        for (Map.Entry<File, String> mixinPair : mixinClassFiles.entrySet()) {
-            try {
-                String classSource = Files.readString(mixinPair.getKey().toPath());
-                parser.setSource(classSource.toCharArray());
-
-                CompilationUnit cu = (CompilationUnit) parser.createAST(null);
-                String classPackage = String.valueOf(cu.getPackage().getName());
-                Set<String> imports = getImportsFrom(cu);
-
-                Resolver resolver = new Resolver(classPackage, sourceSetDirectories, imports);
-
-                for (Object type : cu.types()) {
-                    if (type instanceof TypeDeclaration) {
-                        TypeDeclaration typeDecl = (TypeDeclaration) type;
-
-                        Set<String> mixinTargets = new HashSet<>();
-                        for (Object modifier : typeDecl.modifiers()) {
-                            if (modifier instanceof SingleMemberAnnotation) {
-                                SingleMemberAnnotation annotation = (SingleMemberAnnotation) modifier;
-                                String typeName = String.valueOf(annotation.getTypeName());
-                                String annotationClassName = resolver.resolveClass(typeName).descriptor;
-                                if (annotationClassName.equals("Lorg/spongepowered/asm/mixin/Mixin;")) {
-                                    Expression value = annotation.getValue();
-                                    if (value instanceof TypeLiteral) {
-                                        mixinTargets.add(getName((TypeLiteral) value, resolver).orElseThrow());
-                                        break;
-                                    } else if (value instanceof ArrayInitializer) {
-                                        mixinTargets.addAll(getNames((ArrayInitializer) value, resolver));
-                                        break;
-                                    } else {
-                                        throw new GradleScriptException("Unhandled mixin annotation expression", null);
-                                    }
-                                }
+    private static Set<String> getMixinTargetsForType(TypeDeclaration typeDecl) {
+        Set<String> mixinTargets = new HashSet<>();
+        for (Object modifier : typeDecl.modifiers()) {
+            if (modifier instanceof SingleMemberAnnotation) {
+                SingleMemberAnnotation annotation = (SingleMemberAnnotation) modifier;
+                if (annotation.resolveTypeBinding().getQualifiedName().equals("org.spongepowered.asm.mixin.Mixin")) {
+                    Expression value = annotation.getValue();
+                    if (value instanceof TypeLiteral) {
+                        mixinTargets.add(value.resolveTypeBinding().getTypeArguments()[0].getBinaryName());
+                        break;
+                    } else if (value instanceof ArrayInitializer) {
+                        for (Object expression : ((ArrayInitializer) value).expressions()) {
+                            if (expression instanceof TypeLiteral) {
+                                mixinTargets.add(((TypeLiteral) expression).resolveTypeBinding().getBinaryName());
+                            } else if (expression instanceof StringLiteral) {
+                                mixinTargets.add(((StringLiteral) expression).getLiteralValue());
                             }
                         }
-
-                        if (!mixinTargets.isEmpty()) {
-                            Set<String> interfaces = new HashSet<>();
-                            List<?> interfaceTypes = typeDecl.superInterfaceTypes();
-                            for (Object anInterface : interfaceTypes) {
-                                if (anInterface instanceof SimpleType) {
-                                    SimpleType itf = (SimpleType) anInterface;
-                                    interfaces.add(resolver.resolveClass(String.valueOf(itf.getName())).descriptor);
-                                }
-                            }
-
-                            for (String mixinTarget : mixinTargets) {
-                                interfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashSet<>()).addAll(interfaces);
-                            }
-                        }
+                        break;
+                    } else if (value instanceof StringLiteral) {
+                        mixinTargets.add(((StringLiteral) value).getLiteralValue());
+                    } else {
+                        throw new RuntimeException("Unhandled mixin annotation expression");
                     }
                 }
-            } catch (Throwable e) {
-                e.printStackTrace();
-                throw new GradleScriptException("", e);
             }
         }
-        return interfacesByTarget;
-    }
-
-    private static Set<String> getImportsFrom(CompilationUnit cu) {
-        Set<String> imports = new HashSet<>();
-        for (Object anImport : cu.imports()) {
-            if (anImport instanceof ImportDeclaration) {
-                ImportDeclaration imp = (ImportDeclaration) anImport;
-                imports.add(String.valueOf(imp.getName().getFullyQualifiedName()));
-            }
-        }
-        return imports;
-    }
-
-    private static Set<String> getNames(ArrayInitializer array, Resolver resolver) {
-        Set<String> names = new HashSet<>();
-        for (Object expression : array.expressions()) {
-            if (expression instanceof TypeLiteral) {
-                TypeLiteral literal = (TypeLiteral) expression;
-                names.add(getName(literal, resolver).orElseThrow());
-            }
-        }
-        return names;
-    }
-
-    private static Optional<String> getName(TypeLiteral literal, Resolver resolver) {
-        if (literal.getType().isSimpleType()) {
-
-            String name = String.valueOf(((SimpleType) literal.getType()).getName());
-            return Optional.ofNullable(resolver.resolveClass(name).descriptor);
-        }
-        return Optional.empty();
+        return mixinTargets;
     }
 }

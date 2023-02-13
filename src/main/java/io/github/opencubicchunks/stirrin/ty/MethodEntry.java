@@ -1,25 +1,33 @@
 package io.github.opencubicchunks.stirrin.ty;
 
-import io.github.opencubicchunks.stirrin.util.Pair;
-
-import javax.annotation.Nullable;
-import java.util.List;
-import java.util.Set;
+import java.util.Collection;
+import java.util.Objects;
 
 public class MethodEntry {
     public final String name;
-    public final List<Pair<String, SpecifiedType>> parameters;
-    public final SpecifiedType returnType;
-    public final Set<String> typeParameters;
-    @Nullable public final String methodSignature;
-    public final List<String> exceptions;
+    public final String descriptor;
+    public final String signature;
+    public final Collection<String> parameterNames;
+    public final Collection<String> exceptions;
 
-    public MethodEntry(String name, List<Pair<String, SpecifiedType>> nameParameterPairs, SpecifiedType returnType, Set<String> typeParameters, @Nullable String methodSignature, List<String> exceptions) {
+    public MethodEntry(String name, String descriptor, String signature, Collection<String> parameterNames, Collection<String> exceptions) {
         this.name = name;
-        this.parameters = nameParameterPairs;
-        this.returnType = returnType;
-        this.typeParameters = typeParameters;
-        this.methodSignature = methodSignature;
+        this.descriptor = descriptor;
+        this.signature = signature;
+        this.parameterNames = parameterNames;
         this.exceptions = exceptions;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        MethodEntry that = (MethodEntry) o;
+        return Objects.equals(name, that.name) && Objects.equals(descriptor, that.descriptor);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, descriptor);
     }
 }

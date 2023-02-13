@@ -42,19 +42,23 @@ public class JarIO {
         String name = entry.getName();
         try (InputStream inputStream = jar.getInputStream(entry)){
             if (name.endsWith(".class")) {
-                ByteArrayOutputStream output = new ByteArrayOutputStream(inputStream.available());
-                byte[] buf = new byte[4096];
-                int read;
-                while ((read = inputStream.read(buf)) > 0) {
-                    output.write(buf, 0, read);
-                }
-                byte[] bytes = output.toByteArray();
-                return Optional.of(bytes);
+                return readClassFile(inputStream);
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
         return Optional.empty();
+    }
+
+    private static Optional<byte[]> readClassFile(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(inputStream.available());
+        byte[] buf = new byte[4096];
+        int read;
+        while ((read = inputStream.read(buf)) > 0) {
+            output.write(buf, 0, read);
+        }
+        byte[] bytes = output.toByteArray();
+        return Optional.of(bytes);
     }
 
     /**

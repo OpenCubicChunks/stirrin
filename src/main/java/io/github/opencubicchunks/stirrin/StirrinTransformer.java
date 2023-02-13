@@ -1,8 +1,6 @@
 package io.github.opencubicchunks.stirrin;
 
 import io.github.opencubicchunks.stirrin.ty.MethodEntry;
-import io.github.opencubicchunks.stirrin.ty.SpecifiedType;
-import io.github.opencubicchunks.stirrin.util.Pair;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
@@ -11,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static io.github.opencubicchunks.stirrin.DescriptorUtils.classToDescriptor;
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
@@ -19,22 +18,21 @@ import static io.github.opencubicchunks.stirrin.util.JarIO.saveAsJar;
 import static org.objectweb.asm.Opcodes.*;
 
 public class StirrinTransformer {
-    public static void transformMinecraftJar(Map<String, Set<String>> interfacesByMixinClass, Map<String, List<MethodEntry>> methodsByInterface, File minecraftJar, File outputCoreJar) {
+    public static void transformMinecraftJar(Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget, File minecraftJar, File outputCoreJar) {
         try {
             List<ClassNode> classNodes = loadClasses(minecraftJar);
+
             for (ClassNode classNode : classNodes) {
-                Set<String> interfacesToAdd = interfacesByMixinClass.get(classToDescriptor(classNode.name));
-                if (interfacesToAdd == null) {
+                Map<Type, Collection<MethodEntry>> mixinInterfaces = mixinInterfacesByTarget.get(classNode.name.replace('/', '.'));
+                if (mixinInterfaces == null) {
                     continue;
                 }
-
+                Set<Type> interfacesToAdd = mixinInterfaces.keySet();
                 addInterfacesToClass(classNode, interfacesToAdd);
 
-                for (String itf : interfacesToAdd) {
-                    List<MethodEntry> methodEntries = methodsByInterface.get(itf);
-                    if (methodEntries != null)
-                        addInterfaceMethodsStubs(classNode, methodEntries);
-                }
+                Set<MethodEntry> methodEntries = mixinInterfaces.values().stream().flatMap(Collection::stream).collect(Collectors.toSet());
+
+                addInterfaceMethodsStubs(classNode, methodEntries);
             }
             saveAsJar(classNodes, minecraftJar, outputCoreJar);
         } catch (IOException e) {
@@ -48,36 +46,23 @@ public class StirrinTransformer {
      * @param classNode The {@link ClassNode} to modify
      * @param methodEntries List of method entries to add to the {@link ClassNode}
      */
-    private static void addInterfaceMethodsStubs(ClassNode classNode, List<MethodEntry> methodEntries) {
-        for (MethodEntry methodEntry : methodEntries) {
-            //TODO: add thrown exceptions to signature
-            List<Type> params = new ArrayList<>();
-            // Remove generics from parameters, replaced with Object
-            for (Pair<String, SpecifiedType> parameter : methodEntry.parameters) {
-                String descriptor = parameter.r().descriptor;
-                for (String typeParameter : methodEntry.typeParameters) {
-                    if (descriptor.equals(typeParameter)) {
-                        descriptor = "Ljava/lang/Object;";
-                        break;
-                    }
-                }
-                params.add(Type.getType(descriptor));
-            }
+    private static void addInterfaceMethodsStubs(ClassNode classNode, Collection<MethodEntry> methodEntries) {
+        for (Iterator<MethodEntry> it = methodEntries.iterator(); it.hasNext(); ) {
+            MethodEntry methodEntry = it.next();
 
-            // Remove generics from return type, replaced with Object
-            String returnTypeDescriptor = methodEntry.returnType.descriptor;
-            for (String typeParameter : methodEntry.typeParameters) {
-                if (returnTypeDescriptor.equals(typeParameter)) {
-                    returnTypeDescriptor = "Ljava/lang/Object;";
+            for (MethodNode method : classNode.methods) {
+                if (methodEntry.name.equals(method.name) && methodEntry.descriptor.equals(method.desc)) {
+                    it.remove();
                     break;
                 }
             }
+        }
 
-            String methodDescriptor = Type.getMethodDescriptor(Type.getType(returnTypeDescriptor), params.toArray(new Type[0]));
-            MethodNode method = createMethodStub(classNode, methodEntry, methodDescriptor, methodEntry.methodSignature);
+        for (MethodEntry methodEntry : methodEntries) {
+            MethodNode method = createMethodStub(classNode, methodEntry, methodEntry.descriptor, methodEntry.signature);
 
             classNode.methods.add(method);
-            LOGGER.debug(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodDescriptor);
+            LOGGER.warn(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodEntry.descriptor);
         }
     }
 
@@ -98,11 +83,11 @@ public class StirrinTransformer {
         method.instructions.add(new MethodInsnNode(INVOKESPECIAL, RuntimeException.class.getName().replace('.', '/'), "<init>", "(Ljava/lang/String;)V", false));
         method.instructions.add(new InsnNode(ATHROW));
         method.maxStack = 3;
-        method.maxLocals = 2 + methodEntry.parameters.size(); // 1 for this, 1 for the error, one for each param
+        method.maxLocals = 10; // + methodEntry.method.getArgumentTypes().length; // 1 for this, 1 for the error, one for each param //TODO: reimplement
 
         method.parameters = new ArrayList<>();
-        for (Pair<String, SpecifiedType> parameter : methodEntry.parameters) {
-            method.parameters.add(new ParameterNode(parameter.l(), 0));
+        for (String parameterName : methodEntry.parameterNames) {
+            method.parameters.add(new ParameterNode(parameterName, 0));
         }
 
         method.exceptions = new ArrayList<>();
@@ -115,18 +100,18 @@ public class StirrinTransformer {
      * @param classNode The {@link ClassNode} to modify
      * @param interfacesToAdd The interfaces to add to the {@link ClassNode}
      */
-    private static void addInterfacesToClass(ClassNode classNode, Set<String> interfacesToAdd) {
+    private static void addInterfacesToClass(ClassNode classNode, Set<Type> interfacesToAdd) {
         if (classNode.interfaces == null) {
             classNode.interfaces = new ArrayList<>();
         }
 
         // Add each interface to the classNode's interfaces list without duplicates
         Set<String> interfacesAdded = new HashSet<>();
-        for (String itf : interfacesToAdd) {
-            String substring = itf.substring(1, itf.length() - 1); // classNode.interfaces does NOT contain L and ;
-            if (!classNode.interfaces.contains(substring)) {
-                classNode.interfaces.add(substring);
-                interfacesAdded.add(itf);
+        for (Type itf : interfacesToAdd) {
+            String internalName = itf.getInternalName(); // classNode.interfaces does NOT contain L and ;
+            if (!classNode.interfaces.contains(internalName)) {
+                classNode.interfaces.add(internalName);
+                interfacesAdded.add(itf.getDescriptor());
             }
         }
 
@@ -139,7 +124,7 @@ public class StirrinTransformer {
             classNode.signature = sb.toString();
         }
 
-        for (String interfaceAdded : interfacesToAdd) {
+        for (String interfaceAdded : interfacesAdded) {
             LOGGER.warn(String.format("%s: Added interface %s", classNode.name, interfaceAdded));
         }
     }

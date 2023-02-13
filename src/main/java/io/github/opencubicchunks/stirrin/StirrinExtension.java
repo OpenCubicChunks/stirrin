@@ -3,10 +3,13 @@ package io.github.opencubicchunks.stirrin;
 import io.github.opencubicchunks.stirrin.StirrinTransform.Parameters;
 import io.github.opencubicchunks.stirrin.util.Pair;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.*;
+import org.gradle.api.attributes.LibraryElements;
 import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.util.*;
 
@@ -43,7 +46,45 @@ public class StirrinExtension {
         this.parameters.setDebug(value ? System.nanoTime() : 0);
     }
 
-    public void setAdditionalSourceSets(Set<File> additionalSourceSets) {
-        this.parameters.setAdditionalSourceSets(additionalSourceSets);
+    @CacheableRule
+    public static abstract class MinecraftRule implements ComponentMetadataRule {
+        private final String dependency;
+
+        @Inject
+        public MinecraftRule(String dependency) {
+            this.dependency = dependency;
+        }
+
+        @Override public void execute(ComponentMetadataContext context) {
+            context.getDetails().allVariants(variantMetadata ->
+                variantMetadata.withDependencies(directDependencyMetadata ->
+                    directDependencyMetadata.add(dependency)
+                )
+            );
+        }
+    }
+    public void addDependency(String dependency) {
+        project.getDependencies().getComponents().withModule("net.minecraft:minecraft-merged-project-root", MinecraftRule.class,
+                conf -> conf.setParams(dependency)
+        );
+    }
+
+    public void addDependency(ProjectDependency dependency) {
+        String projectPath = dependency.getDependencyProject().getPath();
+        String module = "io.github.opencubicchunks.stirrin.__fake_project_dep__:" + projectPath.replaceAll(":", "__");
+
+        for (Configuration configuration : project.getConfigurations()) {
+            DependencySubstitutions substitution = configuration.getResolutionStrategy().getDependencySubstitution();
+            substitution.substitute(substitution.module(module)).using(
+                substitution.variant(substitution.project(projectPath), details ->
+                    details.attributes(attrContainer ->
+                        attrContainer.attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, project.getObjects().named(LibraryElements.class, LibraryElements.JAR))
+                    )
+                )
+            );
+        }
+        project.getDependencies().getComponents().withModule("net.minecraft:minecraft-merged-project-root", MinecraftRule.class,
+                conf -> conf.setParams(module + ":1.0")
+        );
     }
 }

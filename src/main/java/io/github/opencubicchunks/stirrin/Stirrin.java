@@ -6,6 +6,8 @@ import io.github.opencubicchunks.stirrin.util.Pair;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.ComponentMetadataContext;
+import org.gradle.api.artifacts.ComponentMetadataRule;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.dsl.DependencyHandler;
@@ -15,9 +17,9 @@ import org.gradle.api.tasks.SourceSetContainer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -38,6 +40,15 @@ public class Stirrin implements Plugin<Project> {
                 configuration.getAttributes().attribute(mixinInterfaces, true);
             }
         }
+
+        project.afterEvaluate(p -> p.getDependencies().getComponents().withModule("net.minecraft:minecraft-merged-project-root", MinecraftLibrariesRule.class, conf -> {
+            List<String> mcLibs = p.getConfigurations().getAt("minecraftLibraries")
+                .getDependencies().stream().map(dep -> dep.getGroup() + ":" + dep.getName() + ":" + dep.getVersion()).collect(Collectors.toList());
+            mcLibs.addAll(p.getConfigurations().getAt("minecraftServerLibraries")
+                .getDependencies().stream().map(dep -> dep.getGroup() + ":" + dep.getName() + ":" + dep.getVersion()).collect(Collectors.toList()));
+            conf.setParams(mcLibs);
+        }));
+
 
         dependencies.getAttributesSchema().attribute(mixinInterfaces);
         // set all jar dependencies to default to mixinInterfaces false
@@ -68,7 +79,7 @@ public class Stirrin implements Plugin<Project> {
             for (File mixinConfig : mixinConfigs) {
                 try {
                     System.out.println("Supplied mixin config path: " + mixinConfig);
-                    String fileText = new String(Files.readAllBytes(mixinConfig.toPath()), StandardCharsets.UTF_8);
+                    String fileText = Files.readString(mixinConfig.toPath());
 
                     JsonObject jsonObject = gson.fromJson(fileText, JsonObject.class);
                     String packagePrefix = jsonObject.get("package").getAsString();
@@ -118,12 +129,29 @@ public class Stirrin implements Plugin<Project> {
         for (String mixinClass : mixinClasses) {
             String mixinClassFilename = mixinClass.replace('.', File.separatorChar) + ".java";
             for (File resource : sourceSet.getJava().getSrcDirs()) {
-                File configFile = new File(resource, mixinClassFilename);
-                if (configFile.exists()) {
-                    mixinClassFilenames.add(new Pair<>(configFile, mixinClass));
+                File mixinSourceFile = new File(resource, mixinClassFilename);
+                if (mixinSourceFile.exists()) {
+                    mixinClassFilenames.add(new Pair<>(mixinSourceFile, mixinClass));
                 }
             }
         }
         return mixinClassFilenames;
+    }
+
+    public static class MinecraftLibrariesRule implements ComponentMetadataRule {
+        private final List<String> dependencies;
+
+        @Inject
+        public MinecraftLibrariesRule(List<String> dependencies) {
+            this.dependencies = dependencies;
+        }
+
+        @Override public void execute(ComponentMetadataContext context) {
+            context.getDetails().allVariants(variantMetadata ->
+                variantMetadata.withDependencies(directDependencyMetadata ->
+                    dependencies.forEach(directDependencyMetadata::add)
+                )
+            );
+        }
     }
 }
