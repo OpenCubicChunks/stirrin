@@ -10,6 +10,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
+import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
+
 public class MethodBindingUtils {
 
     /**
@@ -33,7 +35,7 @@ public class MethodBindingUtils {
                     addSignatureOf(signature, bound);
                 }
             } else { // doesn't have bounds? bind it to object
-                signature.visitClassType("java/lang/Object");
+                signature.visitClassType(Object.class.getName().replace('.', '/'));
                 signature.visitEnd();
             }
         }
@@ -132,6 +134,7 @@ public class MethodBindingUtils {
             field.setAccessible(true);
         } catch (NoSuchFieldException | ClassNotFoundException ignored) {
             field = null;
+            LOGGER.error("Failed to find binding field, parameter names will be unavailable");
         }
         BINDING_FIELD = field;
     }
