@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static io.github.opencubicchunks.stirrin.DescriptorUtils.classToDescriptor;
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
@@ -27,12 +26,13 @@ public class StirrinTransformer {
                 if (mixinInterfaces == null) {
                     continue;
                 }
+
+                // Methods are added first, as this method checks the current interfaces array of the classnode to see which
+                // interfaces to add
+                addInterfaceMethodsStubs(classNode, mixinInterfaces);
+
                 Set<Type> interfacesToAdd = mixinInterfaces.keySet();
                 addInterfacesToClass(classNode, interfacesToAdd);
-
-                Set<MethodEntry> methodEntries = mixinInterfaces.values().stream().flatMap(Collection::stream).collect(Collectors.toSet());
-
-                addInterfaceMethodsStubs(classNode, methodEntries);
             }
             saveAsJar(classNodes, minecraftJar, outputCoreJar);
         } catch (IOException e) {
@@ -44,26 +44,34 @@ public class StirrinTransformer {
      * For each method entry supplied, a stub method is added to the class. See {@link StirrinTransformer#createMethodStub(ClassNode, MethodEntry, String, String)}
      *
      * @param classNode The {@link ClassNode} to modify
-     * @param methodEntries List of method entries to add to the {@link ClassNode}
+     * @param methodEntriesByInterface Method entries by interface they come from, to add to the {@link ClassNode}
      */
-    private static void addInterfaceMethodsStubs(ClassNode classNode, Collection<MethodEntry> methodEntries) {
-        for (Iterator<MethodEntry> it = methodEntries.iterator(); it.hasNext(); ) {
-            MethodEntry methodEntry = it.next();
+    private static void addInterfaceMethodsStubs(ClassNode classNode, Map<Type, Collection<MethodEntry>> methodEntriesByInterface) {
+        methodEntriesByInterface.forEach((itf, methodEntries) -> {
+            if (classNode.interfaces.contains(itf.getInternalName())) {
+                LOGGER.warn(String.format("Class %s already implements interface %s, it will not be applied", classNode.name, itf.getClassName()));
+                return;
+            }
+            for (Iterator<MethodEntry> it = methodEntries.iterator(); it.hasNext(); ) {
+                MethodEntry methodEntry = it.next();
 
-            for (MethodNode method : classNode.methods) {
-                if (methodEntry.name.equals(method.name) && methodEntry.descriptor.equals(method.desc)) {
-                    it.remove();
-                    break;
+                for (MethodNode method : classNode.methods) {
+                    if (methodEntry.name.equals(method.name) && methodEntry.descriptor.equals(method.desc)) {
+                        it.remove();
+                        // TODO: make this an error log once super-interfaces are properly taken into account
+                        LOGGER.warn(String.format("Class %s | Not adding method with identical descriptor to existing method. Method: %s%s", classNode.name, method.name, method.desc));
+                        break;
+                    }
                 }
             }
-        }
 
-        for (MethodEntry methodEntry : methodEntries) {
-            MethodNode method = createMethodStub(classNode, methodEntry, methodEntry.descriptor, methodEntry.signature);
+            for (MethodEntry methodEntry : methodEntries) {
+                MethodNode method = createMethodStub(classNode, methodEntry, methodEntry.descriptor, methodEntry.signature);
 
-            classNode.methods.add(method);
-            LOGGER.warn(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodEntry.descriptor);
-        }
+                classNode.methods.add(method);
+                LOGGER.info(classNode.name + ": Added stub method: " + methodEntry.name + " | " + methodEntry.descriptor);
+            }
+        });
     }
 
     /**
@@ -125,7 +133,7 @@ public class StirrinTransformer {
         }
 
         for (String interfaceAdded : interfacesAdded) {
-            LOGGER.warn(String.format("%s: Added interface %s", classNode.name, interfaceAdded));
+            LOGGER.info(String.format("%s: Added interface %s", classNode.name, interfaceAdded));
         }
     }
 }
