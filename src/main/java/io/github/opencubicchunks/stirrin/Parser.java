@@ -3,10 +3,13 @@ package io.github.opencubicchunks.stirrin;
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.ASTParser;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
 import static org.eclipse.jdt.core.dom.AST.JLS18;
 
 public class Parser {
@@ -18,8 +21,21 @@ public class Parser {
     public Parser(Set<Path> dependencyClasses, Set<Path> projectClasses) {
         this.parser = ASTParser.newParser(JLS18);
 
+        validatePaths(dependencyClasses);
+        validatePaths(projectClasses);
+
         this.dependencyClasses = dependencyClasses;
         this.projectClasses = projectClasses;
+    }
+
+    private static void validatePaths(Set<Path> paths) {
+        for (Iterator<Path> it = paths.iterator(); it.hasNext(); ) {
+            Path path = it.next();
+            if (!Files.exists(path)) {
+                LOGGER.error("Exception initialising Stirrin AST parser. Supplied path does not exist: \"" + path + "\" and will be ignored.");
+                it.remove();
+            }
+        }
     }
 
     public ASTParser getParser() {
