@@ -93,9 +93,11 @@ public class StirrinTransformer {
         method.maxStack = 3;
         method.maxLocals = 10; // + methodEntry.method.getArgumentTypes().length; // 1 for this, 1 for the error, one for each param //TODO: reimplement
 
-        method.parameters = new ArrayList<>();
-        for (String parameterName : methodEntry.parameterNames) {
-            method.parameters.add(new ParameterNode(parameterName, 0));
+        if (methodEntry.parameterNames != null) {
+            method.parameters = new ArrayList<>();
+            for (String parameterName : methodEntry.parameterNames) {
+                method.parameters.add(new ParameterNode(parameterName, 0));
+            }
         }
 
         method.exceptions = new ArrayList<>();
