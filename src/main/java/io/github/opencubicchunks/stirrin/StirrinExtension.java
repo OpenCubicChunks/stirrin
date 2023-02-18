@@ -63,13 +63,14 @@ public class StirrinExtension {
             );
         }
     }
-    public void addDependency(String dependency) {
+    public String addDependency(String dependency) {
         project.getDependencies().getComponents().withModule("net.minecraft:minecraft-merged-project-root", MinecraftRule.class,
                 conf -> conf.setParams(dependency)
         );
+        return dependency;
     }
 
-    public void addDependency(ProjectDependency dependency) {
+    public ProjectDependency addDependency(ProjectDependency dependency) {
         String projectPath = dependency.getDependencyProject().getPath();
         String module = "io.github.opencubicchunks.stirrin.__fake_project_dep__:" + projectPath.replaceAll(":", "__");
 
@@ -86,5 +87,6 @@ public class StirrinExtension {
         project.getDependencies().getComponents().withModule("net.minecraft:minecraft-merged-project-root", MinecraftRule.class,
                 conf -> conf.setParams(module + ":1.0")
         );
+        return dependency;
     }
 }

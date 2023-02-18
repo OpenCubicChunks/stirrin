@@ -52,8 +52,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         Pattern acceptedJars = Pattern.compile(getParameters().getAcceptedJars());
 
         if (acceptedJars.matcher(fileName).matches()) {
-            LOGGER.warn(String.format("found asd %s", minecraftJar));
-
+            LOGGER.warn(String.format("Found accepted jar: %s\n\nTransitive Deps: %s\n", minecraftJar, getTransitiveDeps().getFiles()));
 
             Set<Path> sourceSets = getParameters().getSourceSetDirectories().stream().map(File::toPath).collect(Collectors.toSet());
 
@@ -73,7 +72,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
             LOGGER.warn(String.format("transformed %s", outputFileName));
         } else {
-            LOGGER.info(String.format("Rejected jar %s", fileName));
+            LOGGER.debug(String.format("Rejected jar %s", fileName));
             outputs.file(getInputArtifact());
         }
     }
@@ -108,7 +107,11 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         };
 
         for (Path mixinSourceFile : mixinSourceFiles) {
-            parser.getParser().createASTs(new String[] { mixinSourceFile.toAbsolutePath().toString() }, null, new String[0], requestor, null);
+            try {
+                parser.getParser().createASTs(new String[]{ mixinSourceFile.toAbsolutePath().toString() }, null, new String[0], requestor, null);
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
         }
 
         return mixinInterfacesByTarget;
