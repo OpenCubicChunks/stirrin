@@ -99,7 +99,7 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
                                     Map<Type, Collection<MethodEntry>> methodsByInterface = mixinInterfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashMap<>());
 
                                     interfaceMethodsFromType.forEach((t, methods) ->
-                                        methodsByInterface.computeIfAbsent(t, tt -> new HashSet<>()).addAll(methods));
+                                            methodsByInterface.computeIfAbsent(t, tt -> new HashSet<>()).addAll(methods));
                                 }
                             }
                         }
@@ -108,12 +108,11 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             }
         };
 
-        for (Path mixinSourceFile : mixinSourceFiles) {
-            try {
-                parser.getParser().createASTs(new String[]{ mixinSourceFile.toAbsolutePath().toString() }, null, new String[0], requestor, null);
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
+
+        try {
+            parser.getParser().createASTs(mixinSourceFiles.stream().map(path -> path.toAbsolutePath().toString()).toArray(String[]::new), null, new String[0], requestor, null);
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
 
         return mixinInterfacesByTarget;
