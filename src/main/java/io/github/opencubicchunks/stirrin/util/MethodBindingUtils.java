@@ -21,7 +21,7 @@ public class MethodBindingUtils {
      * @param method The method to create a methodSignature for
      * @return A method methodSignature for the specified method
      */
-    public static String createMethodSignature(IMethodBinding method) {
+    public static String createMethodSignature(IMethodBinding method) throws ClassNotFoundException {
         SignatureWriter signature = new SignatureWriter();
         for (ITypeBinding param : method.getTypeParameters()) {
             signature.visitFormalTypeParameter(String.valueOf(param.getName()));
@@ -57,7 +57,7 @@ public class MethodBindingUtils {
      * @param signature The methodSignature to write to
      * @param paramType The type to find and add the methodSignature of
      */
-    private static void addSignatureOf(SignatureWriter signature, ITypeBinding paramType) {
+    private static void addSignatureOf(SignatureWriter signature, ITypeBinding paramType) throws ClassNotFoundException {
         if (paramType.isGenericType() || paramType.isTypeVariable()) {
             signature.visitTypeVariable(paramType.getName());
         } else if (paramType.isWildcardType()) {
@@ -65,7 +65,7 @@ public class MethodBindingUtils {
         } else if (paramType.isParameterizedType()) {
             // We don't recurse here passing baseType as that would add a ';' before the type parameters
             // incorrect "T;<V>;", correct "T<V>;"
-            signature.visitClassType(paramType.getBinaryName().replace('.', '/'));
+            signature.visitClassType(binaryNameOrThrow(paramType).replace('.', '/'));
 
             for (ITypeBinding typeArgument : paramType.getTypeArguments()) {
                 signature.visitTypeArgument('='); // '=' here denotes a non-wildcard type argument, which we add on the lines below
@@ -80,14 +80,14 @@ public class MethodBindingUtils {
         } else if (paramType.isPrimitive()) {
             signature.visitBaseType(paramType.getBinaryName().charAt(0));
         } else if (paramType.isClass() || paramType.isEnum() || paramType.isRecord() || paramType.isInterface()) {
-            signature.visitClassType(paramType.getBinaryName().replace('.', '/'));
+            signature.visitClassType(binaryNameOrThrow(paramType).replace('.', '/'));
             signature.visitEnd();
         } else {
             throw new RuntimeException("Unhandled parameter type");
         }
     }
 
-    public static String createMethodDescriptor(IMethodBinding method) {
+    public static String createMethodDescriptor(IMethodBinding method) throws ClassNotFoundException {
         SignatureWriter signature = new SignatureWriter();
 
         for (ITypeBinding param : method.getParameterTypes()) {
@@ -101,7 +101,7 @@ public class MethodBindingUtils {
         return signature.toString();
     }
 
-    private static void addDescriptorOf(SignatureWriter signature, ITypeBinding paramType) {
+    private static void addDescriptorOf(SignatureWriter signature, ITypeBinding paramType) throws ClassNotFoundException {
         if (paramType.isGenericType() || paramType.isTypeVariable()) {
             signature.visitClassType(Object.class.getName().replace('.', '/'));
             signature.visitEnd();
@@ -118,11 +118,19 @@ public class MethodBindingUtils {
         } else if (paramType.isPrimitive()) {
             signature.visitBaseType(paramType.getBinaryName().charAt(0));
         } else if (paramType.isClass() || paramType.isEnum() || paramType.isRecord() || paramType.isInterface()) {
-            signature.visitClassType(paramType.getBinaryName().replace('.', '/'));
+            signature.visitClassType(binaryNameOrThrow(paramType).replace('.', '/'));
             signature.visitEnd();
         } else {
             throw new RuntimeException("Unhandled parameter type");
         }
+    }
+
+    private static String binaryNameOrThrow(ITypeBinding type) throws ClassNotFoundException {
+        String binaryName = type.getBinaryName();
+        if (binaryName == null || type.toString().contains("[MISSING:")) { // TODO: remove this jank
+            throw new ClassNotFoundException("Cannot resolve type: " + type.getName());
+        }
+        return binaryName;
     }
 
     private static final Field BINDING_FIELD;

@@ -15,6 +15,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static io.github.opencubicchunks.stirrin.DescriptorUtils.classToDescriptor;
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
 import static io.github.opencubicchunks.stirrin.util.MethodBindingUtils.*;
 
@@ -52,7 +53,8 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         Pattern acceptedJars = Pattern.compile(getParameters().getAcceptedJars());
 
         if (acceptedJars.matcher(fileName).matches()) {
-            LOGGER.warn(String.format("Found accepted jar: %s\n\nTransitive Deps: %s\n", minecraftJar, getTransitiveDeps().getFiles()));
+            LOGGER.warn(String.format("Found accepted jar: %s", minecraftJar));
+            LOGGER.debug(String.format("Transitive Deps: %s", getTransitiveDeps().getFiles()));
 
             Set<Path> sourceSets = getParameters().getSourceSetDirectories().stream().map(File::toPath).collect(Collectors.toSet());
 
@@ -124,17 +126,26 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
             if (anInterface instanceof SimpleType) { // TODO: handle parameterized interfaces
                 ITypeBinding itf = ((SimpleType) anInterface).resolveBinding();
 
-                Type itfType = Type.getType("L" + itf.getBinaryName().replace('.', '/') + ";");
+                if (itf == null || itf.getBinaryName() == null) {
+                    LOGGER.error("Cannot resolve interface: " + ((SimpleType) anInterface).getName().toString() + " for Mixin: " + typeDecl.resolveBinding().getQualifiedName());
+                    continue;
+                }
+
+                Type itfType = Type.getType(classToDescriptor(itf.getBinaryName()));
 
                 for (IMethodBinding method : itf.getDeclaredMethods()) {
-                    String methodDescriptor = createMethodDescriptor(method);
-                    String methodSignature = createMethodSignature(method);
+                    try {
+                        String methodDescriptor = createMethodDescriptor(method);
+                        String methodSignature = createMethodSignature(method);
 
-                    List<String> paramNames = getParamNames(method);
+                        List<String> paramNames = getParamNames(method);
 
-                    methodsByInterface.computeIfAbsent(itfType, t -> new ArrayList<>()).add(
-                        new MethodEntry(method.getName(), methodDescriptor, methodSignature, paramNames, new ArrayList<>())
-                    );
+                        methodsByInterface.computeIfAbsent(itfType, t -> new ArrayList<>()).add(
+                                new MethodEntry(method.getName(), methodDescriptor, methodSignature, paramNames, new ArrayList<>())
+                        );
+                    } catch (ClassNotFoundException e) {
+                        LOGGER.error("Cannot resolve type in method: " + method + " for Interface: " + itf.getQualifiedName());
+                    }
                 }
             }
         }
