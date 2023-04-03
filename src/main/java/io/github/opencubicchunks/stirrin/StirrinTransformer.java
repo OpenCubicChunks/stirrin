@@ -17,9 +17,14 @@ import static io.github.opencubicchunks.stirrin.util.JarIO.saveAsJar;
 import static org.objectweb.asm.Opcodes.*;
 
 public class StirrinTransformer {
-    public static void transformMinecraftJar(Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget, File minecraftJar, File outputCoreJar) {
+    /**
+     * @param mixinInterfacesByTarget Map from Mixin target class, to a map of methods by interface
+     * @param input The input minecraft jar
+     * @param output The output minecraft jar
+     */
+    public static void transformMinecraftJar(Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget, File input, File output) {
         try {
-            List<ClassNode> classNodes = loadClasses(minecraftJar);
+            List<ClassNode> classNodes = loadClasses(input);
 
             for (ClassNode classNode : classNodes) {
                 Map<Type, Collection<MethodEntry>> mixinInterfaces = mixinInterfacesByTarget.get(classNode.name.replace('/', '.'));
@@ -34,7 +39,7 @@ public class StirrinTransformer {
                 Set<Type> interfacesToAdd = mixinInterfaces.keySet();
                 addInterfacesToClass(classNode, interfacesToAdd);
             }
-            saveAsJar(classNodes, minecraftJar, outputCoreJar);
+            saveAsJar(classNodes, input, output);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

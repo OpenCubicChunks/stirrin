@@ -11,7 +11,14 @@ import org.gradle.api.tasks.SourceSetContainer;
 
 import javax.inject.Inject;
 import java.io.File;
-import java.util.*;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static io.github.opencubicchunks.stirrin.util.MapUtil.mapKeys;
 
 public class StirrinExtension {
     private final Project project;
@@ -28,18 +35,19 @@ public class StirrinExtension {
 
     public void setConfigs(Set<String> mixinConfigFiles) {
         SourceSetContainer sourceSets = project.getExtensions().findByType(JavaPluginExtension.class).getSourceSets();
-        List<Pair<File, String>> mixinClassFiles = Stirrin.findMixinClassFiles(mixinConfigFiles, sourceSets);
 
-        Set<File> sourceSetDirectories = new HashSet<>();
+        Set<Pair<Path, String>> mixinSourceFiles = Stirrin.findMixinSourceFiles(mixinConfigFiles, sourceSets);
+        Map<Path, String> sourceFiles = new HashMap<>();
+        mixinSourceFiles.forEach(pair -> sourceFiles.put(pair.l(), pair.r()));
+
+        Set<Path> sourceSetDirectories = new HashSet<>();
         for (SourceSet sourceSet : sourceSets) {
-            sourceSetDirectories.addAll(sourceSet.getJava().getSrcDirs());
+            sourceSetDirectories.addAll(sourceSet.getJava().getSrcDirs().stream().map(File::toPath).collect(Collectors.toSet()));
         }
 
         this.parameters.setConfigs(mixinConfigFiles);
-        Map<File, String> files = new HashMap<>();
-        mixinClassFiles.forEach(pair -> files.put(pair.l(), pair.r()));
-        this.parameters.setMixinFiles(files);
-        this.parameters.setSourceSetDirectories(sourceSetDirectories);
+        this.parameters.setMixinSourceFiles(mapKeys(sourceFiles, Path::toFile));
+        this.parameters.setSourceSetDirectories(sourceSetDirectories.stream().map(Path::toFile).collect(Collectors.toSet()));
     }
 
     public void setDebug(boolean value) {

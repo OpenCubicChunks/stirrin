@@ -1,8 +1,9 @@
 package io.github.opencubicchunks.stirrin.util;
 
+import java.io.Serializable;
 import java.util.Objects;
 
-public final class Pair<L, R> {
+public final class Pair<L, R> implements Serializable {
     private final L l;
     private final R r;
 

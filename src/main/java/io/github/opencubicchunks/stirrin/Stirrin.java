@@ -21,6 +21,7 @@ import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -68,11 +69,11 @@ public class Stirrin implements Plugin<Project> {
     /**
      * @param mixinConfigFilenames mixin config files
      * @param sourceSetContainer SourceSets to search for mixin classes in
-     * @return List of File-ClassName pairs
+     * @return Set of File-ClassName pairs
      */
-    public static List<Pair<File, String>> findMixinClassFiles(Set<String> mixinConfigFilenames, SourceSetContainer sourceSetContainer) {
+    public static Set<Pair<Path, String>> findMixinSourceFiles(Set<String> mixinConfigFilenames, SourceSetContainer sourceSetContainer) {
         Map<SourceSet, List<File>> mixinConfigsBySourceSet = findMixinConfigsBySourceSet(mixinConfigFilenames, sourceSetContainer);
-        List<Pair<File, String>> mixinPairs = new ArrayList<>();
+        Set<Pair<Path, String>> mixinPairs = new HashSet<>();
 
         Gson gson = new Gson();
         mixinConfigsBySourceSet.forEach(((sourceSet, mixinConfigs) -> {
@@ -123,19 +124,24 @@ public class Stirrin implements Plugin<Project> {
         return mixinConfigsBySourceSet;
     }
 
-    private static List<Pair<File, String>> findMixinClasses(SourceSet sourceSet, List<String> mixinClasses) {
-        List<Pair<File, String>> mixinClassFilenames = new ArrayList<>();
+    private static Collection<Pair<Path, String>> findMixinClasses(SourceSet sourceSet, List<String> mixinClasses) {
+        List<Pair<Path, String>> mixinSourceFiles = new ArrayList<>();
 
         for (String mixinClass : mixinClasses) {
-            String mixinClassFilename = mixinClass.replace('.', File.separatorChar) + ".java";
+            String outerClass = mixinClass;
+            int innerClassIdx = mixinClass.indexOf("$");
+            if (innerClassIdx != -1)
+                outerClass = mixinClass.substring(0, innerClassIdx);
+
+            String mixinClassFilename = outerClass.replace('.', File.separatorChar) + ".java";
             for (File resource : sourceSet.getJava().getSrcDirs()) {
-                File mixinSourceFile = new File(resource, mixinClassFilename);
-                if (mixinSourceFile.exists()) {
-                    mixinClassFilenames.add(new Pair<>(mixinSourceFile, mixinClass));
+                Path sourcePath = resource.toPath().resolve(mixinClassFilename);
+                if (Files.exists(sourcePath)) {
+                    mixinSourceFiles.add(new Pair<>(sourcePath, mixinClass));
                 }
             }
         }
-        return mixinClassFilenames;
+        return mixinSourceFiles;
     }
 
     public static class MinecraftLibrariesRule implements ComponentMetadataRule {

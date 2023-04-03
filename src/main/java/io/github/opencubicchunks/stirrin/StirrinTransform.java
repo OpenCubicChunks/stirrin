@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 
 import static io.github.opencubicchunks.stirrin.DescriptorUtils.classToDescriptor;
 import static io.github.opencubicchunks.stirrin.Stirrin.LOGGER;
+import static io.github.opencubicchunks.stirrin.util.MapUtil.mapKeys;
 import static io.github.opencubicchunks.stirrin.util.MethodBindingUtils.*;
 
 public abstract class StirrinTransform implements TransformAction<StirrinTransform.Parameters> {
@@ -35,8 +36,8 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         void setSourceSetDirectories(Set<File> sourceSetDirectories);
 
         @Input
-        Map<File, String> getMixinFiles();
-        void setMixinFiles(Map<File, String> mixinClassFiles);
+        Map<File, String> getMixinSourceFiles();
+        void setMixinSourceFiles(Map<File, String> mixinSourceFiles);
     }
 
     @PathSensitive(PathSensitivity.NAME_ONLY)
@@ -48,29 +49,26 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
 
     @Override
     public void transform(TransformOutputs outputs) {
-        File minecraftJar = getInputArtifact().get().getAsFile();
-        String fileName = minecraftJar.getName();
+        File artifactFile = getInputArtifact().get().getAsFile();
+        String fileName = artifactFile.getName();
         Pattern acceptedJars = Pattern.compile(getParameters().getAcceptedJars());
 
         if (acceptedJars.matcher(fileName).matches()) {
-            LOGGER.warn(String.format("Found accepted jar: %s", minecraftJar));
+            LOGGER.warn(String.format("Found accepted jar: %s", artifactFile));
             LOGGER.debug(String.format("Transitive Deps: %s", getTransitiveDeps().getFiles()));
-
-            Set<Path> sourceSets = getParameters().getSourceSetDirectories().stream().map(File::toPath).collect(Collectors.toSet());
 
             String fileNameNoExt = fileName.substring(0, fileName.lastIndexOf("."));
             String outputFileName = fileNameNoExt + "-stirred.jar";
 
-            Set<Path> transitiveDeps = getTransitiveDeps().getFiles().stream().map(File::toPath).collect(Collectors.toSet());
-            transitiveDeps.add(minecraftJar.toPath());
+            Set<Path> dependencies = getTransitiveDeps().getFiles().stream().map(File::toPath).collect(Collectors.toSet());
+            dependencies.add(artifactFile.toPath());
+            Set<Path> sourceSets = getParameters().getSourceSetDirectories().stream().map(File::toPath).collect(Collectors.toSet());
+            Parser parser = new Parser(dependencies, sourceSets);
 
-            Parser parser = new Parser(transitiveDeps, sourceSets);
+            Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget = 
+                    getMixinInterfacesByTarget(parser, mapKeys(getParameters().getMixinSourceFiles(), File::toPath));
 
-            Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget = getMixinInterfacesByTarget(parser,
-                getParameters().getMixinFiles().keySet().stream().map(File::toPath).collect(Collectors.toSet())
-            );
-
-            StirrinTransformer.transformMinecraftJar(mixinInterfacesByTarget, minecraftJar, outputs.file(outputFileName));
+            StirrinTransformer.transformMinecraftJar(mixinInterfacesByTarget, artifactFile, outputs.file(outputFileName));
 
             LOGGER.warn(String.format("transformed %s", outputFileName));
         } else {
@@ -79,43 +77,53 @@ public abstract class StirrinTransform implements TransformAction<StirrinTransfo
         }
     }
 
-    private static Map<String, Map<Type, Collection<MethodEntry>>> getMixinInterfacesByTarget(Parser parser, Collection<Path> mixinSourceFiles) {
+    private static Map<String, Map<Type, Collection<MethodEntry>>> getMixinInterfacesByTarget(Parser parser, Map<Path, String> mixinSourceFiles) {
         Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget = new HashMap<>();
+
+        Set<String> mixinClasses = new HashSet<>(mixinSourceFiles.values());
 
         FileASTRequestor requestor = new FileASTRequestor() {
             @Override public void acceptAST(String sourceFilePath, CompilationUnit cu) {
                 for (Object type : cu.types()) {
-                    AbstractTypeDeclaration abstractTypeDecl = (AbstractTypeDeclaration) type;
-
-                    if ((abstractTypeDecl.getModifiers() & Modifier.PUBLIC) != 0) { // has public modifier, it must be the main type in the file
-                        if (abstractTypeDecl instanceof TypeDeclaration) {
-                            TypeDeclaration typeDecl = (TypeDeclaration) abstractTypeDecl;
-
-                            Set<String> mixinTargets = getMixinTargetsForType(typeDecl);
-                            if (!mixinTargets.isEmpty()) { // this type is a mixin and has targets
-                                Map<Type, Collection<MethodEntry>> interfaceMethodsFromType = getInterfaceMethodsFromType(typeDecl);
-
-                                for (String mixinTarget : mixinTargets) {
-                                    Map<Type, Collection<MethodEntry>> methodsByInterface = mixinInterfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashMap<>());
-
-                                    interfaceMethodsFromType.forEach((t, methods) ->
-                                            methodsByInterface.computeIfAbsent(t, tt -> new HashSet<>()).addAll(methods));
-                                }
-                            }
-                        }
-                    }
+                    getInterfacesFromType((AbstractTypeDeclaration) type, mixinInterfacesByTarget, mixinClasses);
                 }
             }
         };
 
-
         try {
-            parser.getParser().createASTs(mixinSourceFiles.stream().map(path -> path.toAbsolutePath().toString()).toArray(String[]::new), null, new String[0], requestor, null);
+            String[] sourcePaths = mixinSourceFiles.keySet().stream().map(sourcePath -> sourcePath.toAbsolutePath().toString()).toArray(String[]::new);
+            parser.getParser().createASTs(sourcePaths, null, new String[0], requestor, null);
         } catch (Throwable t) {
             t.printStackTrace();
         }
 
         return mixinInterfacesByTarget;
+    }
+
+    private static void getInterfacesFromType(AbstractTypeDeclaration abstractTypeDecl, Map<String, Map<Type, Collection<MethodEntry>>> mixinInterfacesByTarget, Set<String> mixinClasses) {
+        if (abstractTypeDecl instanceof TypeDeclaration) {
+            TypeDeclaration typeDecl = (TypeDeclaration) abstractTypeDecl;
+
+            if (!mixinClasses.contains(typeDecl.resolveBinding().getBinaryName())) {
+                return;
+            }
+
+            Set<String> mixinTargets = getMixinTargetsForType(typeDecl);
+            if (!mixinTargets.isEmpty()) { // this type is a mixin and has targets
+                Map<Type, Collection<MethodEntry>> interfaceMethodsFromType = getInterfaceMethodsFromType(typeDecl);
+
+                for (String mixinTarget : mixinTargets) {
+                    Map<Type, Collection<MethodEntry>> methodsByInterface = mixinInterfacesByTarget.computeIfAbsent(mixinTarget, t -> new HashMap<>());
+
+                    interfaceMethodsFromType.forEach((t, methods) ->
+                            methodsByInterface.computeIfAbsent(t, tt -> new HashSet<>()).addAll(methods));
+                }
+            }
+
+            for (TypeDeclaration innerType : typeDecl.getTypes()) {
+                getInterfacesFromType(innerType, mixinInterfacesByTarget, mixinClasses);
+            }
+        }
     }
 
     private static Map<Type, Collection<MethodEntry>> getInterfaceMethodsFromType(TypeDeclaration typeDecl) {
